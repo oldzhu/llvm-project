@@ -49,6 +49,7 @@ add_lldb_library(lldbPluginProcessUtility
   RegisterInfoPOSIX_arm.cpp
   RegisterInfoPOSIX_arm64.cpp
   RegisterInfoPOSIX_ppc64le.cpp
+  RegisterInfoPOSIX_riscv.cpp
   StopInfoMachException.cpp
   ThreadMemory.cpp
 

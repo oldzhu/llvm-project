@@ -211,3 +211,6 @@ endif()
 if(LLDB_BUILD_FRAMEWORK)
   include(LLDBFramework)
 endif()
+
+# fix link error when building for riscv
+target_link_libraries(liblldb PRIVATE atomic)
