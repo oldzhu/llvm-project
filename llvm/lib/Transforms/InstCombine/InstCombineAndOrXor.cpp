@@ -1855,7 +1855,7 @@ Instruction *InstCombinerImpl::visitAnd(BinaryOperator &I) {
 
     // ((C1 OP zext(X)) & C2) -> zext((C1 OP X) & C2) if C2 fits in the
     // bitwidth of X and OP behaves well when given trunc(C1) and X.
-    auto isSuitableBinOpcode = [](BinaryOperator *B) {
+    auto isNarrowableBinOpcode = [](BinaryOperator *B) {
       switch (B->getOpcode()) {
       case Instruction::Xor:
       case Instruction::Or:
@@ -1868,12 +1868,14 @@ Instruction *InstCombinerImpl::visitAnd(BinaryOperator &I) {
       }
     };
     BinaryOperator *BO;
-    if (match(Op0, m_OneUse(m_BinOp(BO))) && isSuitableBinOpcode(BO)) {
+    if (match(Op0, m_OneUse(m_BinOp(BO))) && isNarrowableBinOpcode(BO)) {
       Instruction::BinaryOps BOpcode = BO->getOpcode();
       Value *X;
       const APInt *C1;
       // TODO: The one-use restrictions could be relaxed a little if the AND
       // is going to be removed.
+      // Try to narrow the 'and' and a binop with constant operand:
+      // and (bo (zext X), C1), C --> zext (and (bo X, TruncC1), TruncC)
       if (match(BO, m_c_BinOp(m_OneUse(m_ZExt(m_Value(X))), m_APInt(C1))) &&
           C->isIntN(X->getType()->getScalarSizeInBits())) {
         unsigned XWidth = X->getType()->getScalarSizeInBits();
@@ -1886,7 +1888,11 @@ Instruction *InstCombinerImpl::visitAnd(BinaryOperator &I) {
         return new ZExtInst(And, Ty);
       }
 
-      if (match(BO->getOperand(0), m_OneUse(m_ZExt(m_Value(X)))) &&
+      // Similar to above: if the mask matches the zext input width, then the
+      // 'and' can be eliminated, so we can truncate the other variable op:
+      // and (bo (zext X), Y), C --> zext (bo X, (trunc Y))
+      if (isa<Instruction>(BO->getOperand(0)) &&
+          match(BO->getOperand(0), m_OneUse(m_ZExt(m_Value(X)))) &&
           C->isMask(X->getType()->getScalarSizeInBits())) {
         Y = BO->getOperand(1);
         Value *TrY = Builder.CreateTrunc(Y, X->getType(), Y->getName() + ".tr");
@@ -1894,8 +1900,9 @@ Instruction *InstCombinerImpl::visitAnd(BinaryOperator &I) {
             Builder.CreateBinOp(BOpcode, X, TrY, BO->getName() + ".narrow");
         return new ZExtInst(NewBO, Ty);
       }
-
-      if (match(BO->getOperand(1), m_OneUse(m_ZExt(m_Value(X)))) &&
+      // and (bo Y, (zext X)), C --> zext (bo (trunc Y), X)
+      if (isa<Instruction>(BO->getOperand(1)) &&
+          match(BO->getOperand(1), m_OneUse(m_ZExt(m_Value(X)))) &&
           C->isMask(X->getType()->getScalarSizeInBits())) {
         Y = BO->getOperand(0);
         Value *TrY = Builder.CreateTrunc(Y, X->getType(), Y->getName() + ".tr");
