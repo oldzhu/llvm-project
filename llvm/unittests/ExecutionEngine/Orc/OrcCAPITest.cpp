@@ -18,7 +18,9 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Testing/Support/Error.h"
 #include <string>
 
 using namespace llvm;
@@ -138,8 +140,8 @@ protected:
       LLVMJITSymbolFlags Flags = {LLVMJITSymbolGenericFlagsWeak, 0};
       LLVMJITEvaluatedSymbol Sym = {Addr, Flags};
       LLVMOrcRetainSymbolStringPoolEntry(Element.Name);
-      LLVMJITCSymbolMapPair Pair = {Element.Name, Sym};
-      LLVMJITCSymbolMapPair Pairs[] = {Pair};
+      LLVMOrcCSymbolMapPair Pair = {Element.Name, Sym};
+      LLVMOrcCSymbolMapPair Pairs[] = {Pair};
       LLVMOrcMaterializationUnitRef MU = LLVMOrcAbsoluteSymbols(Pairs, 1);
       LLVMErrorRef Err = LLVMOrcJITDylibDefine(JD, MU);
       if (Err)
@@ -252,15 +254,157 @@ TEST_F(OrcCAPITestBase, MaterializationUnitCreation) {
   LLVMOrcJITTargetAddress Addr =
       (LLVMOrcJITTargetAddress)(&materializationUnitFn);
   LLVMJITEvaluatedSymbol Sym = {Addr, Flags};
-  LLVMJITCSymbolMapPair Pair = {Name, Sym};
-  LLVMJITCSymbolMapPair Pairs[] = {Pair};
+  LLVMOrcCSymbolMapPair Pair = {Name, Sym};
+  LLVMOrcCSymbolMapPair Pairs[] = {Pair};
   LLVMOrcMaterializationUnitRef MU = LLVMOrcAbsoluteSymbols(Pairs, 1);
-  LLVMOrcJITDylibDefine(MainDylib, MU);
+  if (LLVMErrorRef E = LLVMOrcJITDylibDefine(MainDylib, MU))
+    FAIL() << "Unexpected error while adding \"test\" symbol (triple = "
+           << TargetTriple << "): " << toString(E);
   LLVMOrcJITTargetAddress OutAddr;
   if (LLVMErrorRef E = LLVMOrcLLJITLookup(Jit, &OutAddr, "test"))
     FAIL() << "Failed to look up \"test\" symbol (triple = " << TargetTriple
            << "): " << toString(E);
   ASSERT_EQ(Addr, OutAddr);
+}
+
+struct ExecutionSessionLookupHelper {
+  bool ExpectSuccess = true;
+  bool CallbackReceived = false;
+  size_t NumExpectedPairs;
+  LLVMOrcCSymbolMapPair *ExpectedMapping;
+};
+
+static void executionSessionLookupHandlerCallback(LLVMErrorRef Err,
+                                                  LLVMOrcCSymbolMapPairs Result,
+                                                  size_t NumPairs,
+                                                  void *RawCtx) {
+  auto *Ctx = static_cast<ExecutionSessionLookupHelper *>(RawCtx);
+  Ctx->CallbackReceived = true;
+  if (Ctx->ExpectSuccess) {
+    EXPECT_THAT_ERROR(unwrap(Err), Succeeded());
+    EXPECT_EQ(NumPairs, Ctx->NumExpectedPairs)
+        << "Expected " << Ctx->NumExpectedPairs << " entries in result, got "
+        << NumPairs;
+    auto ExpectedMappingEnd = Ctx->ExpectedMapping + Ctx->NumExpectedPairs;
+    for (unsigned I = 0; I != NumPairs; ++I) {
+      auto J =
+          std::find_if(Ctx->ExpectedMapping, ExpectedMappingEnd,
+                       [N = Result[I].Name](const LLVMOrcCSymbolMapPair &Val) {
+                         return Val.Name == N;
+                       });
+      EXPECT_NE(J, ExpectedMappingEnd)
+          << "Missing symbol \""
+          << LLVMOrcSymbolStringPoolEntryStr(Result[I].Name) << "\"";
+      if (J != ExpectedMappingEnd) {
+        EXPECT_EQ(Result[I].Sym.Address, J->Sym.Address)
+            << "Result map for \"" << Result[I].Name
+            << "\" differs from expected value: "
+            << formatv("{0:x} vs {1:x}", Result[I].Sym.Address, J->Sym.Address);
+      }
+    }
+  } else
+    EXPECT_THAT_ERROR(unwrap(Err), Failed());
+}
+
+TEST_F(OrcCAPITestBase, ExecutionSessionLookup_Success) {
+  // Test a successful generic lookup. We will look up three symbols over two
+  // JITDylibs: { "Foo" (Required), "Bar" (Weakly-ref), "Baz" (Required) } over
+  // { MainJITDylib (Exported-only), ExtraJD (All symbols) }.
+  //
+  // Foo will be defined as exported in MainJD.
+  // Bar will be defined as non-exported in MainJD.
+  // Baz will be defined as non-exported in ExtraJD.
+  //
+  // This will require (1) that we find the regular exported symbol Foo in
+  // MainJD, (2) that we *don't* find the non-exported symbol Bar in MainJD
+  // but also don't error (since it's weakly referenced), and (3) that we
+  // find the non-exported symbol Baz in ExtraJD (since we're searching all
+  // symbols in ExtraJD).
+
+  ExecutionSessionLookupHelper H;
+  LLVMOrcSymbolStringPoolEntryRef Foo = LLVMOrcLLJITMangleAndIntern(Jit, "Foo");
+  LLVMOrcSymbolStringPoolEntryRef Bar = LLVMOrcLLJITMangleAndIntern(Jit, "Bar");
+  LLVMOrcSymbolStringPoolEntryRef Baz = LLVMOrcLLJITMangleAndIntern(Jit, "Baz");
+
+  // Create ExtraJD.
+  LLVMOrcJITDylibRef ExtraJD = nullptr;
+  if (auto E = LLVMOrcExecutionSessionCreateJITDylib(ExecutionSession, &ExtraJD,
+                                                     "ExtraJD")) {
+    FAIL() << "Unexpected error while creating JITDylib \"ExtraJD\" (triple = "
+           << TargetTriple << "): " << toString(E);
+    return;
+  }
+
+  // Add exported symbols "Foo" and "Bar" to Main JITDylib.
+  LLVMOrcRetainSymbolStringPoolEntry(Foo);
+  LLVMOrcRetainSymbolStringPoolEntry(Bar);
+  LLVMOrcCSymbolMapPair MainJDPairs[] = {
+      {Foo, {0x1, {LLVMJITSymbolGenericFlagsExported, 0}}},
+      {Bar, {0x2, {LLVMJITSymbolGenericFlagsNone, 0}}}};
+  LLVMOrcMaterializationUnitRef MainJDMU =
+      LLVMOrcAbsoluteSymbols(MainJDPairs, 2);
+  if (LLVMErrorRef E = LLVMOrcJITDylibDefine(MainDylib, MainJDMU))
+    FAIL() << "Unexpected error while adding MainDylib symbols (triple = "
+           << TargetTriple << "): " << toString(E);
+
+  // Add non-exported symbol "Baz" to ExtraJD.
+  LLVMOrcRetainSymbolStringPoolEntry(Baz);
+  LLVMOrcCSymbolMapPair ExtraJDPairs[] = {
+      {Baz, {0x3, {LLVMJITSymbolGenericFlagsNone, 0}}}};
+  LLVMOrcMaterializationUnitRef ExtraJDMU =
+      LLVMOrcAbsoluteSymbols(ExtraJDPairs, 1);
+  if (LLVMErrorRef E = LLVMOrcJITDylibDefine(ExtraJD, ExtraJDMU))
+    FAIL() << "Unexpected error while adding ExtraJD symbols (triple = "
+           << TargetTriple << "): " << toString(E);
+
+  // Create expected mapping for result:
+  LLVMOrcCSymbolMapPair ExpectedMapping[] = {
+      {Foo, {0x1, {LLVMJITSymbolGenericFlagsExported, 0}}},
+      {Baz, {0x3, {LLVMJITSymbolGenericFlagsNone, 0}}}};
+  H.ExpectedMapping = ExpectedMapping;
+  H.NumExpectedPairs = 2;
+
+  // Issue the lookup. We're using the default same-thread dispatch, so the
+  // handler should have run by the time we return from this call.
+  LLVMOrcCJITDylibSearchOrderElement SO[] = {
+      {MainDylib, LLVMOrcJITDylibLookupFlagsMatchExportedSymbolsOnly},
+      {ExtraJD, LLVMOrcJITDylibLookupFlagsMatchAllSymbols}};
+
+  LLVMOrcRetainSymbolStringPoolEntry(Foo);
+  LLVMOrcRetainSymbolStringPoolEntry(Bar);
+  LLVMOrcRetainSymbolStringPoolEntry(Baz);
+  LLVMOrcCLookupSetElement LS[] = {
+      {Foo, LLVMOrcSymbolLookupFlagsRequiredSymbol},
+      {Bar, LLVMOrcSymbolLookupFlagsWeaklyReferencedSymbol},
+      {Baz, LLVMOrcSymbolLookupFlagsRequiredSymbol}};
+  LLVMOrcExecutionSessionLookup(ExecutionSession, LLVMOrcLookupKindStatic, SO,
+                                2, LS, 3, executionSessionLookupHandlerCallback,
+                                &H);
+
+  EXPECT_TRUE(H.CallbackReceived) << "Lookup callback never received";
+
+  // Release our local string ptrs.
+  LLVMOrcReleaseSymbolStringPoolEntry(Baz);
+  LLVMOrcReleaseSymbolStringPoolEntry(Bar);
+  LLVMOrcReleaseSymbolStringPoolEntry(Foo);
+}
+
+TEST_F(OrcCAPITestBase, ExecutionSessionLookup_Failure) {
+  // Test generic lookup failure case. We will look up a symbol in MainDylib
+  // without defining it. We expect this to result in a symbol-not-found error.
+
+  ExecutionSessionLookupHelper H;
+  H.ExpectSuccess = false;
+
+  LLVMOrcCJITDylibSearchOrderElement SO[] = {
+      {MainDylib, LLVMOrcJITDylibLookupFlagsMatchExportedSymbolsOnly}};
+  LLVMOrcCLookupSetElement LS[] = {{LLVMOrcLLJITMangleAndIntern(Jit, "Foo"),
+                                    LLVMOrcSymbolLookupFlagsRequiredSymbol}};
+  LLVMOrcExecutionSessionLookup(ExecutionSession, LLVMOrcLookupKindStatic, SO,
+                                1, LS, 1, executionSessionLookupHandlerCallback,
+                                &H);
+
+  EXPECT_TRUE(H.CallbackReceived) << "Lookup callback never received";
 }
 
 TEST_F(OrcCAPITestBase, DefinitionGenerators) {
@@ -433,7 +577,7 @@ void Materialize(void *Ctx, LLVMOrcMaterializationResponsibilityRef MR) {
   }
   assert(OtherMR);
 
-  LLVMJITCSymbolMapPair OtherPair = {OtherSymbol, Sym};
+  LLVMOrcCSymbolMapPair OtherPair = {OtherSymbol, Sym};
   LLVMOrcMaterializationUnitRef OtherMU = LLVMOrcAbsoluteSymbols(&OtherPair, 1);
   // OtherSymbol is no longer owned by us
   {
@@ -474,7 +618,7 @@ void Materialize(void *Ctx, LLVMOrcMaterializationResponsibilityRef MR) {
   LLVMOrcMaterializationResponsibilityAddDependenciesForAll(MR, &Dependency, 1);
 
   // See FIXME above
-  LLVMJITCSymbolMapPair Pair = {DependencySymbol, Sym};
+  LLVMOrcCSymbolMapPair Pair = {DependencySymbol, Sym};
   LLVMOrcMaterializationResponsibilityNotifyResolved(MR, &Pair, 1);
   // DependencySymbol no longer owned by us
 
