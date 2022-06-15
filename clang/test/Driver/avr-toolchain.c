@@ -61,7 +61,7 @@
 // RUN: %clang -### --target=avr --sysroot=%S/Inputs/basic_avr_tree -mmcu=atmega328 %s -fuse-ld=avrld 2>&1 | FileCheck --check-prefix=NOLD %s
 // NOLD: error: invalid linker
 
-// RUN: %clang -### --target=avr --sysroot=%S/Inputs/basic_avr_tree -mmcu=atmega328 %s -fuse-ld=lld 2>&1 | FileCheck --check-prefix=LLD %s
+// RUN: %clang -### --target=avr --sysroot=%S/Inputs/basic_avr_tree -mmcu=atmega328 %s -fuse-ld=%S/Inputs/basic_avr_tree/usr/bin/ld.lld 2>&1 | FileCheck --check-prefix=LLD %s
 // LLD: {{".*lld"}}
 // LLD-NOT: "avr-ld"
 // LLD-NOT: "-mavr5"
@@ -69,6 +69,6 @@
 // RUN: %clang -### --target=avr --sysroot=%S/Inputs/basic_avr_tree -mmcu=atmega328 %s -T avr.lds 2>&1 | FileCheck --check-prefix=LDS0 %s
 // LDS0: "-T" "avr.lds" "-mavr5"
 
-// RUN: %clang -### --target=avr --sysroot=%S/Inputs/basic_avr_tree -mmcu=atmega328 %s -fuse-ld=lld -T avr.lds 2>&1 | FileCheck --check-prefix=LDS1 %s
+// RUN: %clang -### --target=avr --sysroot=%S/Inputs/basic_avr_tree -mmcu=atmega328 %s -fuse-ld=%S/Inputs/basic_avr_tree/usr/bin/ld.lld -T avr.lds 2>&1 | FileCheck --check-prefix=LDS1 %s
 // LDS1: "-T" "avr.lds"
 // LDS1-NOT: "-mavr5"
