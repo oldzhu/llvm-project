@@ -1442,7 +1442,9 @@ Expected<Value *> BitcodeReader::materializeValue(unsigned StartValID,
     if (isConstExprSupported(BC->Opcode) && ConstOps.size() == Ops.size()) {
       Constant *C;
       if (Instruction::isCast(BC->Opcode)) {
-        C = ConstantExpr::getCast(BC->Opcode, ConstOps[0], BC->getType());
+        C = UpgradeBitCastExpr(BC->Opcode, ConstOps[0], BC->getType());
+        if (!C)
+          C = ConstantExpr::getCast(BC->Opcode, ConstOps[0], BC->getType());
       } else if (Instruction::isUnaryOp(BC->Opcode)) {
         C = ConstantExpr::get(BC->Opcode, ConstOps[0], BC->Flags);
       } else if (Instruction::isBinaryOp(BC->Opcode)) {
@@ -3142,11 +3144,10 @@ Error BitcodeReader::parseConstants() {
         return error("Explicit gep operator type does not match pointee type "
                      "of pointer operand");
 
-      V = BitcodeConstant::create(
-          Alloc, CurTy,
-          {Instruction::GetElementPtr, InBounds, InRangeIndex.getValueOr(-1),
-           PointeeType},
-          Elts);
+      V = BitcodeConstant::create(Alloc, CurTy,
+                                  {Instruction::GetElementPtr, InBounds,
+                                   InRangeIndex.value_or(-1), PointeeType},
+                                  Elts);
       break;
     }
     case bitc::CST_CODE_CE_SELECT: {  // CE_SELECT: [opval#, opval#, opval#]
