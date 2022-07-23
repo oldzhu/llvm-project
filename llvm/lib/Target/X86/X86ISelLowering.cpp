@@ -22914,33 +22914,14 @@ SDValue X86TargetLowering::LowerFP_ROUND(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   SDValue Chain = IsStrict ? Op.getOperand(0) : SDValue();
   SDValue In = Op.getOperand(IsStrict ? 1 : 0);
-  SDValue Op2 = Op.getOperand(IsStrict ? 2 : 1);
   MVT VT = Op.getSimpleValueType();
   MVT SVT = In.getSimpleValueType();
 
   if (SVT == MVT::f128 || (VT == MVT::f16 && SVT == MVT::f80))
     return SDValue();
 
-  if (VT.getScalarType() == MVT::f16 && isTypeLegal(VT)) {
-    if (Subtarget.hasFP16())
-      return Op;
-
-    if (SVT.getScalarType() != MVT::f32) {
-      MVT TmpVT =
-          VT.isVector() ? SVT.changeVectorElementType(MVT::f32) : MVT::f32;
-      if (IsStrict)
-        return DAG.getNode(
-            ISD::STRICT_FP_ROUND, DL, {VT, MVT::Other},
-            {Chain,
-             DAG.getNode(ISD::STRICT_FP_ROUND, DL, {TmpVT, MVT::Other},
-                         {Chain, In, Op2}),
-             Op2});
-
-      return DAG.getNode(ISD::FP_ROUND, DL, VT,
-                         DAG.getNode(ISD::FP_ROUND, DL, TmpVT, In, Op2), Op2);
-    }
-
-    if (!Subtarget.hasF16C())
+  if (VT.getScalarType() == MVT::f16 && !Subtarget.hasFP16()) {
+    if (!Subtarget.hasF16C() || SVT.getScalarType() != MVT::f32)
       return SDValue();
 
     if (VT.isVector())
@@ -27337,27 +27318,6 @@ SDValue X86TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
     }
     return DAG.getCopyFromReg(DAG.getEntryNode(), dl, Reg, VT);
   }
-  case Intrinsic::swift_async_context_addr: {
-    auto &MF = DAG.getMachineFunction();
-    auto X86FI = MF.getInfo<X86MachineFunctionInfo>();
-    if (Subtarget.is64Bit()) {
-      MF.getFrameInfo().setFrameAddressIsTaken(true);
-      X86FI->setHasSwiftAsyncContext(true);
-      return SDValue(
-          DAG.getMachineNode(
-              X86::SUB64ri8, dl, MVT::i64,
-              DAG.getCopyFromReg(DAG.getEntryNode(), dl, X86::RBP, MVT::i64),
-              DAG.getTargetConstant(8, dl, MVT::i32)),
-          0);
-    } else {
-      // 32-bit so no special extended frame, create or reuse an existing stack
-      // slot.
-      if (!X86FI->getSwiftAsyncContextFrameIdx())
-        X86FI->setSwiftAsyncContextFrameIdx(
-            MF.getFrameInfo().CreateStackObject(4, Align(4), false));
-      return DAG.getFrameIndex(*X86FI->getSwiftAsyncContextFrameIdx(), MVT::i32);
-    }
-  }
   case Intrinsic::x86_avx512_vp2intersect_q_512:
   case Intrinsic::x86_avx512_vp2intersect_q_256:
   case Intrinsic::x86_avx512_vp2intersect_q_128:
@@ -27737,6 +27697,37 @@ static SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, const X86Subtarget &Subtarget,
   const IntrinsicData *IntrData = getIntrinsicWithChain(IntNo);
   if (!IntrData) {
     switch (IntNo) {
+
+    case Intrinsic::swift_async_context_addr: {
+      SDLoc dl(Op);
+      auto &MF = DAG.getMachineFunction();
+      auto X86FI = MF.getInfo<X86MachineFunctionInfo>();
+      if (Subtarget.is64Bit()) {
+        MF.getFrameInfo().setFrameAddressIsTaken(true);
+        X86FI->setHasSwiftAsyncContext(true);
+        SDValue Chain = Op->getOperand(0);
+        SDValue CopyRBP = DAG.getCopyFromReg(Chain, dl, X86::RBP, MVT::i64);
+        SDValue Result =
+            SDValue(DAG.getMachineNode(X86::SUB64ri8, dl, MVT::i64, CopyRBP,
+                                       DAG.getTargetConstant(8, dl, MVT::i32)),
+                    0);
+        // Return { result, chain }.
+        return DAG.getNode(ISD::MERGE_VALUES, dl, Op->getVTList(), Result,
+                           CopyRBP.getValue(1));
+      } else {
+        // 32-bit so no special extended frame, create or reuse an existing
+        // stack slot.
+        if (!X86FI->getSwiftAsyncContextFrameIdx())
+          X86FI->setSwiftAsyncContextFrameIdx(
+              MF.getFrameInfo().CreateStackObject(4, Align(4), false));
+        SDValue Result =
+            DAG.getFrameIndex(*X86FI->getSwiftAsyncContextFrameIdx(), MVT::i32);
+        // Return { result, chain }.
+        return DAG.getNode(ISD::MERGE_VALUES, dl, Op->getVTList(), Result,
+                           Op->getOperand(0));
+      }
+    }
+
     case llvm::Intrinsic::x86_seh_ehregnode:
       return MarkEHRegistrationNode(Op, DAG);
     case llvm::Intrinsic::x86_seh_ehguard:
@@ -32983,19 +32974,8 @@ void X86TargetLowering::ReplaceNodeResults(SDNode *N,
     }
     if (!Subtarget.hasFP16() && VT.getVectorElementType() == MVT::f16) {
       assert(Subtarget.hasF16C() && "Cannot widen f16 without F16C");
-      if (SrcVT == MVT::v2f64) {
-        if (IsStrict)
-          Src = DAG.getNode(X86ISD::STRICT_VFPROUND, dl,
-                            {MVT::v4f32, MVT::Other}, {Chain, Src});
-        else
-          Src = DAG.getNode(X86ISD::VFPROUND, dl, MVT::v4f32, Src);
-      } else if (SrcVT == MVT::v4f64) {
-        if (IsStrict)
-          Src = DAG.getNode(ISD::STRICT_FP_ROUND, dl, {MVT::v4f32, MVT::Other},
-                            {Chain, Src, Rnd});
-        else
-          Src = DAG.getNode(ISD::FP_ROUND, dl, MVT::v4f32, Src, Rnd);
-      }
+      if (SrcVT.getVectorElementType() != MVT::f32)
+        return;
 
       if (IsStrict)
         V = DAG.getNode(X86ISD::STRICT_CVTPS2PH, dl, {MVT::v8i16, MVT::Other},
