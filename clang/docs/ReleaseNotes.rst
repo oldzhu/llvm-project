@@ -54,6 +54,12 @@ Bug Fixes
   `Issue 56800 <https://github.com/llvm/llvm-project/issues/56800>`_.
 - Fix `#56772 <https://github.com/llvm/llvm-project/issues/56772>`_ - invalid
   destructor names were incorrectly accepted on template classes.
+- Improve compile-times with large dynamic array allocations with trivial
+  constructors. This fixes
+  `Issue 56774 <https://github.com/llvm/llvm-project/issues/56774>`_.
+- No longer assert/miscompile when trying to make a vectorized ``_BitInt`` type
+  using the ``ext_vector_type`` attribute (the ``vector_size`` attribute was
+  already properly diagnosing this case).
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
