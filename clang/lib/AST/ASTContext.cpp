@@ -4420,7 +4420,7 @@ QualType ASTContext::getFunctionTypeInternal(
       case EST_Unparsed: case EST_Unevaluated: case EST_Uninstantiated:
         // We don't know yet. It shouldn't matter what we pick here; no-one
         // should ever look at this.
-        LLVM_FALLTHROUGH;
+        [[fallthrough]];
       case EST_None: case EST_MSAny: case EST_NoexceptFalse:
         CanonicalEPI.ExceptionSpec.Type = EST_None;
         break;
@@ -8286,7 +8286,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string &S,
       return;
     }
     // TODO: Double check to make sure this intentionally falls through.
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   }
 
   case Type::ObjCInterface: {
@@ -11673,7 +11673,7 @@ void ASTContext::forEachMultiversionedFunctionVersion(
        FD->getDeclContext()->getRedeclContext()->lookup(FD->getDeclName())) {
     FunctionDecl *CurFD = CurDecl->getAsFunction()->getMostRecentDecl();
     if (CurFD && hasSameType(CurFD->getType(), FD->getType()) &&
-        std::end(SeenDecls) == llvm::find(SeenDecls, CurFD)) {
+        !llvm::is_contained(SeenDecls, CurFD)) {
       SeenDecls.insert(CurFD);
       Pred(CurFD);
     }

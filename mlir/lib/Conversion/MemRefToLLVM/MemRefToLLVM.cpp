@@ -184,9 +184,6 @@ struct AlignedAllocOpLowering : public AllocLikeOpLLVMLowering {
   DataLayout defaultLayout;
 };
 
-// Out of line definition, required till C++17.
-constexpr uint64_t AlignedAllocOpLowering::kMinAlignedAllocAlignment;
-
 struct AllocaOpLowering : public AllocLikeOpLLVMLowering {
   AllocaOpLowering(LLVMTypeConverter &converter)
       : AllocLikeOpLLVMLowering(memref::AllocaOp::getOperationName(),

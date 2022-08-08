@@ -1252,12 +1252,14 @@ static bool isPoisonShift(Value *Amount, const SimplifyQuery &Q) {
   if (Q.isUndefValue(C))
     return true;
 
-  // Shifting by the bitwidth or more is undefined.
-  if (ConstantInt *CI = dyn_cast<ConstantInt>(C))
-    if (CI->getValue().uge(CI->getType()->getScalarSizeInBits()))
-      return true;
+  // Shifting by the bitwidth or more is poison. This covers scalars and
+  // fixed/scalable vectors with splat constants.
+  const APInt *AmountC;
+  if (match(C, m_APInt(AmountC)) && AmountC->uge(AmountC->getBitWidth()))
+    return true;
 
-  // If all lanes of a vector shift are undefined the whole shift is.
+  // Try harder for fixed-length vectors:
+  // If all lanes of a vector shift are poison, the whole shift is poison.
   if (isa<ConstantVector>(C) || isa<ConstantDataVector>(C)) {
     for (unsigned I = 0,
                   E = cast<FixedVectorType>(C->getType())->getNumElements();
@@ -2660,7 +2662,7 @@ static Constant *computePointerICmp(CmpInst::Predicate Pred, Value *LHS,
   default:
     return nullptr;
 
-    // Equality comaprisons are easy to fold.
+    // Equality comparisons are easy to fold.
   case CmpInst::ICMP_EQ:
   case CmpInst::ICMP_NE:
     break;
@@ -3025,7 +3027,7 @@ static Value *simplifyICmpWithBinOpOnLHS(CmpInst::Predicate Pred,
       KnownBits Known = computeKnownBits(RHS, Q.DL, 0, Q.AC, Q.CxtI, Q.DT);
       if (!Known.isNonNegative())
         break;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     }
     case ICmpInst::ICMP_EQ:
     case ICmpInst::ICMP_UGT:
@@ -3036,7 +3038,7 @@ static Value *simplifyICmpWithBinOpOnLHS(CmpInst::Predicate Pred,
       KnownBits Known = computeKnownBits(RHS, Q.DL, 0, Q.AC, Q.CxtI, Q.DT);
       if (!Known.isNonNegative())
         break;
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     }
     case ICmpInst::ICMP_NE:
     case ICmpInst::ICMP_ULT:
@@ -5867,7 +5869,7 @@ static Value *simplifyBinaryIntrinsic(Function *F, Value *Op0, Value *Op1,
     // sat(X + MAX) -> MAX
     if (match(Op0, m_AllOnes()) || match(Op1, m_AllOnes()))
       return Constant::getAllOnesValue(ReturnType);
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case Intrinsic::sadd_sat:
     // sat(X + undef) -> -1
     // sat(undef + X) -> -1
@@ -5887,7 +5889,7 @@ static Value *simplifyBinaryIntrinsic(Function *F, Value *Op0, Value *Op1,
     // sat(0 - X) -> 0, sat(X - MAX) -> 0
     if (match(Op0, m_Zero()) || match(Op1, m_AllOnes()))
       return Constant::getNullValue(ReturnType);
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case Intrinsic::ssub_sat:
     // X - X -> 0, X - undef -> 0, undef - X -> 0
     if (Op0 == Op1 || Q.isUndefValue(Op0) || Q.isUndefValue(Op1))

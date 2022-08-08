@@ -71,10 +71,14 @@ Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 - Clang will now correctly diagnose as ill-formed a constant expression where an
   enum without a fixed underlying type is set to a value outside the range of
-  the enumeration's values. Fixes
+  the enumeration's values. Due to the extended period of time this bug was
+  present in major C++ implementations (including Clang), this error has the
+  ability to be downgraded into a warning (via: -Wno-error=enum-constexpr-conversion)
+  to provide a transition period for users. This diagnostic is expected to turn
+  into an error-only diagnostic in the next Clang release. Fixes
   `Issue 50055: <https://github.com/llvm/llvm-project/issues/50055>`_.
 - Clang will now check compile-time determinable string literals as format strings.
-  This fixes `Issue 55805: <https://github.com/llvm/llvm-project/issues/55805>`_.
+  Fixes `Issue 55805: <https://github.com/llvm/llvm-project/issues/55805>`_.
 - ``-Wformat`` now recognizes ``%b`` for the ``printf``/``scanf`` family of
   functions and ``%B`` for the ``printf`` family of functions. Fixes
   `Issue 56885: <https://github.com/llvm/llvm-project/issues/56885>`_.
