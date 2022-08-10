@@ -418,7 +418,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setTruncStoreAction(VT, MVT::bf16, Expand);
 
     setOperationAction(ISD::BF16_TO_FP, VT, Expand);
-    setOperationAction(ISD::FP_TO_BF16, VT, Expand);
+    setOperationAction(ISD::FP_TO_BF16, VT, Custom);
   }
 
   setOperationAction(ISD::PARITY, MVT::i8, Custom);
@@ -2495,6 +2495,10 @@ MVT X86TargetLowering::getRegisterTypeForCallingConv(LLVMContext &Context,
       !Subtarget.hasX87())
     return MVT::i32;
 
+  if (VT.isVector() && VT.getVectorElementType() == MVT::bf16)
+    return getRegisterTypeForCallingConv(Context, CC,
+                                         VT.changeVectorElementTypeToInteger());
+
   return TargetLowering::getRegisterTypeForCallingConv(Context, CC, VT);
 }
 
@@ -2525,6 +2529,10 @@ unsigned X86TargetLowering::getNumRegistersForCallingConv(LLVMContext &Context,
     if (VT == MVT::f80)
       return 3;
   }
+
+  if (VT.isVector() && VT.getVectorElementType() == MVT::bf16)
+    return getNumRegistersForCallingConv(Context, CC,
+                                         VT.changeVectorElementTypeToInteger());
 
   return TargetLowering::getNumRegistersForCallingConv(Context, CC, VT);
 }
@@ -2732,6 +2740,40 @@ unsigned X86TargetLowering::getJumpTableEncoding() const {
 
   // Otherwise, use the normal jump table encoding heuristics.
   return TargetLowering::getJumpTableEncoding();
+}
+
+bool X86TargetLowering::splitValueIntoRegisterParts(
+    SelectionDAG &DAG, const SDLoc &DL, SDValue Val, SDValue *Parts,
+    unsigned NumParts, MVT PartVT, Optional<CallingConv::ID> CC) const {
+  bool IsABIRegCopy = CC.has_value();
+  EVT ValueVT = Val.getValueType();
+  if (IsABIRegCopy && ValueVT == MVT::bf16 && PartVT == MVT::f32) {
+    unsigned ValueBits = ValueVT.getSizeInBits();
+    unsigned PartBits = PartVT.getSizeInBits();
+    Val = DAG.getNode(ISD::BITCAST, DL, MVT::getIntegerVT(ValueBits), Val);
+    Val = DAG.getNode(ISD::ANY_EXTEND, DL, MVT::getIntegerVT(PartBits), Val);
+    Val = DAG.getNode(ISD::BITCAST, DL, PartVT, Val);
+    Parts[0] = Val;
+    return true;
+  }
+  return false;
+}
+
+SDValue X86TargetLowering::joinRegisterPartsIntoValue(
+    SelectionDAG &DAG, const SDLoc &DL, const SDValue *Parts, unsigned NumParts,
+    MVT PartVT, EVT ValueVT, Optional<CallingConv::ID> CC) const {
+  bool IsABIRegCopy = CC.has_value();
+  if (IsABIRegCopy && ValueVT == MVT::bf16 && PartVT == MVT::f32) {
+    unsigned ValueBits = ValueVT.getSizeInBits();
+    unsigned PartBits = PartVT.getSizeInBits();
+    SDValue Val = Parts[0];
+
+    Val = DAG.getNode(ISD::BITCAST, DL, MVT::getIntegerVT(PartBits), Val);
+    Val = DAG.getNode(ISD::TRUNCATE, DL, MVT::getIntegerVT(ValueBits), Val);
+    Val = DAG.getNode(ISD::BITCAST, DL, ValueVT, Val);
+    return Val;
+  }
+  return SDValue();
 }
 
 bool X86TargetLowering::useSoftFloat() const {
@@ -23041,6 +23083,18 @@ static SDValue LowerFP_TO_FP16(SDValue Op, SelectionDAG &DAG) {
   return Res;
 }
 
+SDValue X86TargetLowering::LowerFP_TO_BF16(SDValue Op,
+                                           SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  MakeLibCallOptions CallOptions;
+  RTLIB::Libcall LC =
+      RTLIB::getFPROUND(Op.getOperand(0).getValueType(), MVT::bf16);
+  SDValue Res =
+      makeLibCall(DAG, LC, MVT::f32, Op.getOperand(0), CallOptions, DL).first;
+  return DAG.getNode(ISD::TRUNCATE, DL, MVT::i16,
+                     DAG.getBitcast(MVT::i32, Res));
+}
+
 /// Depending on uarch and/or optimizing for size, we might prefer to use a
 /// vector operation in place of the typical scalar operation.
 static SDValue lowerAddSubToHorizontalOp(SDValue Op, SelectionDAG &DAG,
@@ -29691,7 +29745,7 @@ static SDValue LowerShiftByScalarImmediate(SDValue Op, SelectionDAG &DAG,
       // safe, we must freeze R to ensure that register allocation uses the same
       // register for an undefined value. This ensures that the result will
       // still be even and preserves the original semantics.
-      R = DAG.getNode(ISD::FREEZE, dl, VT, R);
+      R = DAG.getFreeze(R);
       return DAG.getNode(ISD::ADD, dl, VT, R, R);
     }
 
@@ -32233,6 +32287,7 @@ SDValue X86TargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::STRICT_FP16_TO_FP:  return LowerFP16_TO_FP(Op, DAG);
   case ISD::FP_TO_FP16:
   case ISD::STRICT_FP_TO_FP16:  return LowerFP_TO_FP16(Op, DAG);
+  case ISD::FP_TO_BF16:         return LowerFP_TO_BF16(Op, DAG);
   case ISD::LOAD:               return LowerLoad(Op, Subtarget, DAG);
   case ISD::STORE:              return LowerStore(Op, Subtarget, DAG);
   case ISD::FADD:
@@ -48433,6 +48488,31 @@ static SDValue combineOr(SDNode *N, SelectionDAG &DAG,
 
   if (SDValue R = combineLogicBlendIntoPBLENDV(N, DAG, Subtarget))
     return R;
+
+  // (0 - SetCC) | C -> (zext (not SetCC)) * (C + 1) - 1 if we can get a LEA out of it.
+  if ((VT == MVT::i32 || VT == MVT::i64) &&
+      N0.getOpcode() == ISD::SUB && N0.hasOneUse() &&
+      isNullConstant(N0.getOperand(0))) {
+    SDValue Cond = N0.getOperand(1);
+    if (Cond.getOpcode() == ISD::ZERO_EXTEND && Cond.hasOneUse())
+      Cond = Cond.getOperand(0);
+
+    if (Cond.getOpcode() == X86ISD::SETCC && Cond.hasOneUse()) {
+      if (auto *CN = dyn_cast<ConstantSDNode>(N1)) {
+        unsigned Val = CN->getZExtValue();
+        if (Val == 1 || Val == 2 || Val == 3 || Val == 4 || Val == 7 || Val == 8) {
+          X86::CondCode CCode = (X86::CondCode)Cond.getConstantOperandVal(0);
+          CCode = X86::GetOppositeBranchCondition(CCode);
+          SDValue NotCond = getSETCC(CCode, Cond.getOperand(1), SDLoc(Cond), DAG);
+
+          SDValue R = DAG.getZExtOrTrunc(NotCond, dl, VT);
+          R = DAG.getNode(ISD::MUL, dl, VT, R, DAG.getConstant(Val + 1, dl, VT));
+          R = DAG.getNode(ISD::SUB, dl, VT, R, DAG.getConstant(1, dl, VT));
+          return R;
+        }
+      }
+    }
+  }
 
   // Combine OR(X,KSHIFTL(Y,Elts/2)) -> CONCAT_VECTORS(X,Y) == KUNPCK(X,Y).
   // Combine OR(KSHIFTL(X,Elts/2),Y) -> CONCAT_VECTORS(Y,X) == KUNPCK(Y,X).
