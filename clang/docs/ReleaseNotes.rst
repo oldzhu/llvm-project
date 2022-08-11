@@ -65,7 +65,9 @@ Bug Fixes
 - Fix a crash when evaluating a multi-dimensional array's array filler
   expression is element-dependent. This fixes
   `Issue 50601 <https://github.com/llvm/llvm-project/issues/56016>`_.
-
+- Fixed a crash-on-valid with consteval evaluation of a list-initialized
+  constructor for a temporary object. This fixes
+  `Issue 55871 <https://github.com/llvm/llvm-project/issues/55871>`_.
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -96,6 +98,9 @@ Improvements to Clang's diagnostics
   missing when used, or vice versa. This makes sure that Clang picks the
   correct one, where it previously would consider multiple ones as potentially
   acceptable (and erroneously use whichever one is tried first).
+- Clang will now print more information about failed static assertions. In
+  particular, simple static assertion expressions are evaluated to their
+  compile-time value and printed out if the assertion fails.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
