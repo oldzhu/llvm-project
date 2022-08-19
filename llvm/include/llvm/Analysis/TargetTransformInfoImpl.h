@@ -595,6 +595,7 @@ public:
   InstructionCost getMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
                                   unsigned AddressSpace,
                                   TTI::TargetCostKind CostKind,
+                                  TTI::OperandValueKind OpdInfo,
                                   const Instruction *I) const {
     return 1;
   }
@@ -1099,9 +1100,10 @@ public:
     case Instruction::Store: {
       auto *SI = cast<StoreInst>(U);
       Type *ValTy = U->getOperand(0)->getType();
+      TTI::OperandValueKind OpVK = TTI::getOperandInfo(U->getOperand(0));
       return TargetTTI->getMemoryOpCost(Opcode, ValTy, SI->getAlign(),
-                                        SI->getPointerAddressSpace(),
-                                        CostKind, I);
+                                        SI->getPointerAddressSpace(), CostKind,
+                                        OpVK, I);
     }
     case Instruction::Load: {
       // FIXME: Arbitary cost which could come from the backend.
@@ -1122,8 +1124,8 @@ public:
           LoadType = TI->getDestTy();
       }
       return TargetTTI->getMemoryOpCost(Opcode, LoadType, LI->getAlign(),
-                                        LI->getPointerAddressSpace(),
-                                        CostKind, I);
+                                        LI->getPointerAddressSpace(), CostKind,
+                                        TTI::OK_AnyValue, I);
     }
     case Instruction::Select: {
       const Value *Op0, *Op1;

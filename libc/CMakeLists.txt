@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.13.4)
 
-include(GNUInstallDirs)
-
 # Default to C++17
 set(CMAKE_CXX_STANDARD 17)
 
@@ -148,15 +146,17 @@ set(LIBC_COMPONENT)
 set(LIBC_INSTALL_DEPENDS)
 set(LIBC_INSTALL_TARGET)
 if(LLVM_LIBC_FULL_BUILD)
-  set(LIBC_TARGET c)
+  set(LIBC_TARGET libc)
   set(LIBC_COMPONENT libc)
-  set(LIBC_INSTALL_DEPENDS "c;libc-headers")
+  set(LIBC_INSTALL_DEPENDS "libc;libc-headers;libc-startup")
   set(LIBC_INSTALL_TARGET install-libc)
+  set(LIBC_ARCHIVE_NAME c)
 else()
   set(LIBC_TARGET llvmlibc)
   set(LIBC_COMPONENT llvmlibc)
   set(LIBC_INSTALL_DEPENDS llvmlibc)
   set(LIBC_INSTALL_TARGET install-llvmlibc)
+  set(LIBC_ARCHIVE_NAME llvmlibc)
 endif()
 
 add_subdirectory(include)

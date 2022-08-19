@@ -1032,6 +1032,8 @@ public:
   /// Collect properties of V used in cost analysis, e.g. OP_PowerOf2.
   static OperandValueKind getOperandInfo(const Value *V,
                                          OperandValueProperties &OpProps);
+  static OperandValueKind getOperandInfo(const Value *V);
+
 
   /// This is an approximation of reciprocal throughput of a math/logic op.
   /// A higher cost indicates less expected throughput.
@@ -1173,6 +1175,7 @@ public:
   getMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
                   unsigned AddressSpace,
                   TTI::TargetCostKind CostKind = TTI::TCK_RecipThroughput,
+                  OperandValueKind OpdInfo = OK_AnyValue,
                   const Instruction *I = nullptr) const;
 
   /// \return The cost of VP Load and Store instructions.
@@ -1740,11 +1743,10 @@ public:
                             const APInt &DemandedDstElts,
                             TTI::TargetCostKind CostKind) = 0;
 
-  virtual InstructionCost getMemoryOpCost(unsigned Opcode, Type *Src,
-                                          Align Alignment,
-                                          unsigned AddressSpace,
-                                          TTI::TargetCostKind CostKind,
-                                          const Instruction *I) = 0;
+  virtual InstructionCost
+  getMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
+                  unsigned AddressSpace, TTI::TargetCostKind CostKind,
+                  OperandValueKind OpdInfo, const Instruction *I) = 0;
   virtual InstructionCost getVPMemoryOpCost(unsigned Opcode, Type *Src,
                                             Align Alignment,
                                             unsigned AddressSpace,
@@ -2307,9 +2309,10 @@ public:
   InstructionCost getMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
                                   unsigned AddressSpace,
                                   TTI::TargetCostKind CostKind,
+                                  OperandValueKind OpdInfo,
                                   const Instruction *I) override {
-    return Impl.getMemoryOpCost(Opcode, Src, Alignment, AddressSpace,
-                                CostKind, I);
+    return Impl.getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, CostKind,
+                                OpdInfo, I);
   }
   InstructionCost getVPMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
                                     unsigned AddressSpace,
