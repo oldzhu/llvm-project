@@ -2152,12 +2152,6 @@ bool Driver::HandleImmediateArgs(const Compilation &C) {
     return false;
   }
 
-  if (C.getArgs().hasArg(options::OPT_print_multiarch)) {
-    llvm::outs() << TC.getMultiarchTriple(*this, TC.getTriple(), SysRoot)
-                 << "\n";
-    return false;
-  }
-
   if (C.getArgs().hasArg(options::OPT_print_targets)) {
     llvm::TargetRegistry::printRegisteredTargetsForVersion(llvm::outs());
     return false;
@@ -4536,7 +4530,8 @@ void Driver::BuildJobs(Compilation &C) const {
   //
   // OffloadClass of type TY_Nothing: device-only output will place many outputs
   // into a single offloading action. We should count all inputs to the action
-  // as outputs.
+  // as outputs. Also ignore device-only outputs if we're compiling with
+  // -fsyntax-only.
   if (FinalOutput) {
     unsigned NumOutputs = 0;
     unsigned NumIfsOutputs = 0;
@@ -4550,7 +4545,8 @@ void Driver::BuildJobs(Compilation &C) const {
              A->getInputs().front()->getKind() == Action::IfsMergeJobClass)))
         ++NumOutputs;
       else if (A->getKind() == Action::OffloadClass &&
-               A->getType() == types::TY_Nothing)
+               A->getType() == types::TY_Nothing &&
+               !C.getArgs().hasArg(options::OPT_fsyntax_only))
         NumOutputs += A->size();
     }
 
