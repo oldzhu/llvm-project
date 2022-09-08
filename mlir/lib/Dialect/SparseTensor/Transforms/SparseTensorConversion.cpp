@@ -1077,8 +1077,10 @@ public:
     Type resType = op.getType();
     Type ptrType = resType.cast<ShapedType>().getElementType();
     SmallString<16> name{"sparsePointers", overheadTypeFunctionSuffix(ptrType)};
-    replaceOpWithFuncCall(rewriter, op, name, resType, adaptor.getOperands(),
-                          EmitCInterface::On);
+    Value dim =
+        constantIndex(rewriter, op->getLoc(), op.getDimension().getZExtValue());
+    replaceOpWithFuncCall(rewriter, op, name, resType,
+                          {adaptor.getTensor(), dim}, EmitCInterface::On);
     return success();
   }
 };
@@ -1093,8 +1095,10 @@ public:
     Type resType = op.getType();
     Type indType = resType.cast<ShapedType>().getElementType();
     SmallString<15> name{"sparseIndices", overheadTypeFunctionSuffix(indType)};
-    replaceOpWithFuncCall(rewriter, op, name, resType, adaptor.getOperands(),
-                          EmitCInterface::On);
+    Value dim =
+        constantIndex(rewriter, op->getLoc(), op.getDimension().getZExtValue());
+    replaceOpWithFuncCall(rewriter, op, name, resType,
+                          {adaptor.getTensor(), dim}, EmitCInterface::On);
     return success();
   }
 };
@@ -1162,10 +1166,14 @@ public:
     Type idxType = rewriter.getIndexType();
     // All initialization should be done on entry of the loop nest.
     rewriter.setInsertionPointAfter(op.getTensor().getDefiningOp());
-    // Determine the size for access expansion.
+    // Determine the size for access expansion (always the innermost stored
+    // dimension size, translated back to original dimension). Note that we
+    // recursively rewrite the new DimOp on the **original** tensor.
     auto enc = getSparseTensorEncoding(srcType);
-    Value src = adaptor.getOperands()[0];
-    Value sz = genDimSizeCall(rewriter, loc, enc, src, srcType.getRank() - 1);
+    unsigned innerDim = srcType.getRank() - 1;
+    if (AffineMap p = enc.getDimOrdering())
+      innerDim = p.getDimPosition(innerDim);
+    Value sz = rewriter.create<tensor::DimOp>(loc, op.getTensor(), innerDim);
     // Allocate temporary buffers for values, filled-switch, and indices.
     // We do not use stack buffers for this, since the expanded size may
     // be rather large (as it envelops a single expanded dense dimension).
