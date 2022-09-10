@@ -2111,6 +2111,7 @@ cc_library(
         ":SparseTensorDialect",
         ":SparseTensorTransforms",
         ":TensorTransforms",
+        ":Transforms",
         ":VectorToLLVM",
         ":VectorTransforms",
     ],
@@ -5061,11 +5062,13 @@ cc_library(
         "include/mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h",
         "include/mlir/Dialect/Tensor/Transforms/Passes.h",
         "include/mlir/Dialect/Tensor/Transforms/Transforms.h",
+        "include/mlir/Dialect/Tensor/Transforms/TransformUtils.h"
     ],
     includes = ["include"],
     deps = [
         ":AffineDialect",
         ":ArithmeticDialect",
+        ":ArithmeticUtils",
         ":BufferizationDialect",
         ":BufferizationTransforms",
         ":DialectUtils",
@@ -8571,10 +8574,9 @@ cc_library(
         "lib/Dialect/Arithmetic/Transforms/*.cpp",
         "lib/Dialect/Arithmetic/Transforms/*.h",
     ]),
-    hdrs = [
-        "include/mlir/Dialect/Arithmetic/Transforms/BufferizableOpInterfaceImpl.h",
-        "include/mlir/Dialect/Arithmetic/Transforms/Passes.h",
-    ],
+    hdrs = glob([
+        "include/mlir/Dialect/Arithmetic/Transforms/*.h",
+    ]),
     includes = ["include"],
     deps = [
         ":Analysis",
@@ -8584,12 +8586,14 @@ cc_library(
         ":BufferizationDialect",
         ":BufferizationTransforms",
         ":FuncDialect",
+        ":FuncTransforms",
         ":IR",
         ":InferIntRangeInterface",
         ":MemRefDialect",
         ":Pass",
         ":TransformUtils",
         ":Transforms",
+        ":VectorDialect",
         "//llvm:Support",
     ],
 )
