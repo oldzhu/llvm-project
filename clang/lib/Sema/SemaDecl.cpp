@@ -4109,9 +4109,10 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD, Scope *S,
         // The old declaration provided a function prototype, but the
         // new declaration does not. Merge in the prototype.
         assert(!OldProto->hasExceptionSpec() && "Exception spec in C");
-        NewQType = Context.getFunctionType(NewFuncType->getReturnType(),
-                                           OldProto->getParamTypes(),
-                                           OldProto->getExtProtoInfo());
+        SmallVector<QualType, 16> ParamTypes(OldProto->param_types());
+        NewQType =
+            Context.getFunctionType(NewFuncType->getReturnType(), ParamTypes,
+                                    OldProto->getExtProtoInfo());
         New->setType(NewQType);
         New->setHasInheritedPrototype();
 
@@ -9503,7 +9504,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     bool ImplicitInlineCXX20 = !getLangOpts().CPlusPlusModules ||
                                !NewFD->getOwningModule() ||
                                NewFD->getOwningModule()->isGlobalModule() ||
-                               NewFD->getOwningModule()->isModuleMapModule();
+                               NewFD->getOwningModule()->isHeaderLikeModule();
     bool isInline = D.getDeclSpec().isInlineSpecified();
     bool isVirtual = D.getDeclSpec().isVirtualSpecified();
     bool hasExplicit = D.getDeclSpec().hasExplicitSpecifier();
@@ -11081,11 +11082,11 @@ static bool CheckMultiVersionAdditionalDecl(
   bool MayNeedOverloadableChecks =
       AllowOverloadingOfFunction(Previous, S.Context, NewFD);
 
-  // Next, check ALL non-overloads to see if this is a redeclaration of a
-  // previous member of the MultiVersion set.
+  // Next, check ALL non-invalid non-overloads to see if this is a redeclaration
+  // of a previous member of the MultiVersion set.
   for (NamedDecl *ND : Previous) {
     FunctionDecl *CurFD = ND->getAsFunction();
-    if (!CurFD)
+    if (!CurFD || CurFD->isInvalidDecl())
       continue;
     if (MayNeedOverloadableChecks &&
         S.IsOverload(NewFD, CurFD, UseMemberUsingDeclRules))
@@ -12373,10 +12374,7 @@ QualType Sema::deduceVarTypeFromInitializer(VarDecl *VDecl,
                                     Type.getQualifiers());
 
   QualType DeducedType;
-  TemplateDeductionInfo Info(DeduceInit->getExprLoc());
-  TemplateDeductionResult Result =
-      DeduceAutoType(TSI->getTypeLoc(), DeduceInit, DeducedType, Info);
-  if (Result != TDK_Success && Result != TDK_AlreadyDiagnosed) {
+  if (DeduceAutoType(TSI, DeduceInit, DeducedType) == DAR_Failed) {
     if (!IsInitCapture)
       DiagnoseAutoDeductionFailure(VDecl, DeduceInit);
     else if (isa<InitListExpr>(Init))
