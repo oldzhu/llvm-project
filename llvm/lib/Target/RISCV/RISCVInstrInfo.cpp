@@ -1127,8 +1127,7 @@ RISCVInstrInfo::isCopyInstrImpl(const MachineInstr &MI) const {
 
 bool RISCVInstrInfo::verifyInstruction(const MachineInstr &MI,
                                        StringRef &ErrInfo) const {
-  const MCInstrInfo *MCII = STI.getInstrInfo();
-  MCInstrDesc const &Desc = MCII->get(MI.getOpcode());
+  MCInstrDesc const &Desc = MI.getDesc();
 
   for (auto &OI : enumerate(Desc.operands())) {
     unsigned OpType = OI.value().OperandType;
@@ -1195,17 +1194,14 @@ bool RISCVInstrInfo::verifyInstruction(const MachineInstr &MI,
           Ok = isShiftedInt<7, 5>(Imm);
           break;
         case RISCVOp::OPERAND_UIMMLOG2XLEN:
-          Ok = STI.getTargetTriple().isArch64Bit() ? isUInt<6>(Imm)
-                                                   : isUInt<5>(Imm);
+          Ok = STI.is64Bit() ? isUInt<6>(Imm) : isUInt<5>(Imm);
           break;
         case RISCVOp::OPERAND_UIMMLOG2XLEN_NONZERO:
-          Ok = STI.getTargetTriple().isArch64Bit() ? isUInt<6>(Imm)
-                                                   : isUInt<5>(Imm);
+          Ok = STI.is64Bit() ? isUInt<6>(Imm) : isUInt<5>(Imm);
           Ok = Ok && Imm != 0;
           break;
         case RISCVOp::OPERAND_UIMM_SHFL:
-          Ok = STI.getTargetTriple().isArch64Bit() ? isUInt<5>(Imm)
-                                                   : isUInt<4>(Imm);
+          Ok = STI.is64Bit() ? isUInt<5>(Imm) : isUInt<4>(Imm);
           break;
         case RISCVOp::OPERAND_RVKRNUM:
           Ok = Imm >= 0 && Imm <= 10;
@@ -1220,6 +1216,28 @@ bool RISCVInstrInfo::verifyInstruction(const MachineInstr &MI,
   }
 
   const uint64_t TSFlags = Desc.TSFlags;
+  if (RISCVII::hasMergeOp(TSFlags)) {
+    unsigned OpIdx = RISCVII::getMergeOpNum(Desc);
+    if (MI.findTiedOperandIdx(0) != OpIdx) {
+      ErrInfo = "Merge op improperly tied";
+      return false;
+    }
+  }
+  if (RISCVII::hasVLOp(TSFlags)) {
+    const MachineOperand &Op = MI.getOperand(RISCVII::getVLOpNum(Desc));
+    if (!Op.isImm() && !Op.isReg())  {
+      ErrInfo = "Invalid operand type for VL operand";
+      return false;
+    }
+    if (Op.isReg() && Op.getReg() != RISCV::NoRegister) {
+      const MachineRegisterInfo &MRI = MI.getParent()->getParent()->getRegInfo();
+      auto *RC = MRI.getRegClass(Op.getReg());
+      if (!RISCV::GPRRegClass.hasSubClassEq(RC)) {
+        ErrInfo = "Invalid register class for VL operand";
+        return false;
+      }
+    }
+  }
   if (RISCVII::hasSEWOp(TSFlags)) {
     unsigned OpIdx = RISCVII::getSEWOpNum(Desc);
     uint64_t Log2SEW = MI.getOperand(OpIdx).getImm();
