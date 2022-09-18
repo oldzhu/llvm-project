@@ -182,20 +182,20 @@ PreservedAnalyses ModuleInlinerPass::run(Module &M,
 
   // Loop forward over all of the calls.
   while (!Calls->empty()) {
-    Function &F = *Calls->front().first->getCaller();
+    auto P = Calls->pop();
+    CallBase *CB = P.first;
+    const int InlineHistoryID = P.second;
+    Function &F = *CB->getCaller();
+    Function &Callee = *CB->getCalledFunction();
 
     LLVM_DEBUG(dbgs() << "Inlining calls in: " << F.getName() << "\n"
                       << "    Function size: " << F.getInstructionCount()
                       << "\n");
+    (void)F;
 
     auto GetAssumptionCache = [&](Function &F) -> AssumptionCache & {
       return FAM.getResult<AssumptionAnalysis>(F);
     };
-
-    auto P = Calls->pop();
-    CallBase *CB = P.first;
-    const int InlineHistoryID = P.second;
-    Function &Callee = *CB->getCalledFunction();
 
     if (InlineHistoryID != -1 &&
         inlineHistoryIncludes(&Callee, InlineHistoryID, InlineHistory)) {
@@ -218,7 +218,10 @@ PreservedAnalyses ModuleInlinerPass::run(Module &M,
         &FAM.getResult<BlockFrequencyAnalysis>(Callee));
 
     InlineResult IR =
-        InlineFunction(*CB, IFI, &FAM.getResult<AAManager>(*CB->getCaller()));
+        InlineFunction(*CB, IFI, &FAM.getResult<AAManager>(*CB->getCaller()),
+                       /*InsertLifetime=*/true,
+                       /*ForwardVarArgsTo=*/nullptr,
+                       /*MergeAttributes=*/true);
     if (!IR.isSuccess()) {
       Advice->recordUnsuccessfulInlining(IR);
       continue;
@@ -250,9 +253,6 @@ PreservedAnalyses ModuleInlinerPass::run(Module &M,
             Calls->push({ICB, NewHistoryID});
       }
     }
-
-    // Merge the attributes based on the inlining.
-    AttributeFuncs::mergeAttributesForInlining(F, Callee);
 
     // For local functions, check whether this makes the callee trivially
     // dead. In that case, we can drop the body of the function eagerly
