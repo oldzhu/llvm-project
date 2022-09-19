@@ -151,6 +151,10 @@ Bug Fixes
   `Issue 57369 <https://github.com/llvm/llvm-project/issues/57369>`_
   `Issue 57643 <https://github.com/llvm/llvm-project/issues/57643>`_
   `Issue 57793 <https://github.com/llvm/llvm-project/issues/57793>`_
+- Respect constructor constraints during class template argument deduction (CTAD).
+  This is the suggested resolution to CWG DR2628.
+  `Issue 57646 <https://github.com/llvm/llvm-project/issues/57646>`_
+  `Issue 43829 <https://github.com/llvm/llvm-project/issues/43829>`_
 
 
 Improvements to Clang's diagnostics
@@ -273,8 +277,7 @@ C2x Feature Support
 - Implemented `WG14 N2662 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2662.pdf>`_,
   so the [[maybe_unused]] attribute may be applied to a label to silence an
   ``-Wunused-label`` warning.
-
-- Implemented `WG14 N508 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2508.pdf>`_,
+- Implemented `WG14 N2508 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2508.pdf>`_,
   so labels can placed everywhere inside a compound statement.
 
 C++ Language Changes in Clang
