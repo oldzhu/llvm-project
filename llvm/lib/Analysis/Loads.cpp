@@ -78,13 +78,11 @@ static bool isDereferenceableAndAlignedPointer(
                                                           CheckForFreed));
   if (KnownDerefBytes.getBoolValue() && KnownDerefBytes.uge(Size) &&
       !CheckForFreed)
-    if (!CheckForNonNull || isKnownNonZero(V, DL, 0, nullptr, CtxI, DT)) {
+    if (!CheckForNonNull || isKnownNonZero(V, DL, 0, AC, CtxI, DT)) {
       // As we recursed through GEPs to get here, we've incrementally checked
       // that each step advanced by a multiple of the alignment. If our base is
       // properly aligned, then the original offset accessed must also be.
-      Type *Ty = V->getType();
-      assert(Ty->isSized() && "must be sized");
-      APInt Offset(DL.getTypeStoreSizeInBits(Ty), 0);
+      APInt Offset(DL.getTypeStoreSizeInBits(V->getType()), 0);
       return isAligned(V, Offset, Alignment, DL);
     }
 
@@ -169,14 +167,12 @@ static bool isDereferenceableAndAlignedPointer(
     if (getObjectSize(V, ObjSize, DL, TLI, Opts)) {
       APInt KnownDerefBytes(Size.getBitWidth(), ObjSize);
       if (KnownDerefBytes.getBoolValue() && KnownDerefBytes.uge(Size) &&
-          isKnownNonZero(V, DL, 0, nullptr, CtxI, DT) && !V->canBeFreed()) {
+          isKnownNonZero(V, DL, 0, AC, CtxI, DT) && !V->canBeFreed()) {
         // As we recursed through GEPs to get here, we've incrementally
         // checked that each step advanced by a multiple of the alignment. If
         // our base is properly aligned, then the original offset accessed
         // must also be.
-        Type *Ty = V->getType();
-        assert(Ty->isSized() && "must be sized");
-        APInt Offset(DL.getTypeStoreSizeInBits(Ty), 0);
+        APInt Offset(DL.getTypeStoreSizeInBits(V->getType()), 0);
         return isAligned(V, Offset, Alignment, DL);
       }
     }
@@ -327,12 +323,13 @@ bool llvm::isDereferenceableAndAlignedInLoop(LoadInst *LI, Loop *L,
 bool llvm::isSafeToLoadUnconditionally(Value *V, Align Alignment, APInt &Size,
                                        const DataLayout &DL,
                                        Instruction *ScanFrom,
+                                       AssumptionCache *AC,
                                        const DominatorTree *DT,
                                        const TargetLibraryInfo *TLI) {
   // If DT is not specified we can't make context-sensitive query
   const Instruction* CtxI = DT ? ScanFrom : nullptr;
-  if (isDereferenceableAndAlignedPointer(V, Alignment, Size, DL, CtxI, nullptr,
-                                         DT, TLI))
+  if (isDereferenceableAndAlignedPointer(V, Alignment, Size, DL, CtxI, AC, DT,
+                                         TLI))
     return true;
 
   if (!ScanFrom)
@@ -403,13 +400,15 @@ bool llvm::isSafeToLoadUnconditionally(Value *V, Align Alignment, APInt &Size,
 bool llvm::isSafeToLoadUnconditionally(Value *V, Type *Ty, Align Alignment,
                                        const DataLayout &DL,
                                        Instruction *ScanFrom,
+                                       AssumptionCache *AC,
                                        const DominatorTree *DT,
                                        const TargetLibraryInfo *TLI) {
   TypeSize TySize = DL.getTypeStoreSize(Ty);
   if (TySize.isScalable())
     return false;
   APInt Size(DL.getIndexTypeSizeInBits(V->getType()), TySize.getFixedValue());
-  return isSafeToLoadUnconditionally(V, Alignment, Size, DL, ScanFrom, DT, TLI);
+  return isSafeToLoadUnconditionally(V, Alignment, Size, DL, ScanFrom, AC, DT,
+                                     TLI);
 }
 
 /// DefMaxInstsToScan - the default number of maximum instructions
