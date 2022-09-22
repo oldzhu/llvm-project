@@ -4499,7 +4499,7 @@ static void ProcessVSRuntimeLibrary(const ArgList &Args,
     llvm_unreachable("Unexpected option ID.");
   }
 
-  if (Args.hasArg(options::OPT__SLASH_Zl)) {
+  if (Args.hasArg(options::OPT_fms_omit_default_lib)) {
     CmdArgs.push_back("-D_VC_NODEFAULTLIB");
   } else {
     CmdArgs.push_back(FlagForCRT.data());
@@ -6499,6 +6499,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       types::isCXX(InputType)) {
     CmdArgs.push_back("-fcoroutines-ts");
   }
+
+  if (Args.hasFlag(options::OPT_fcoro_aligned_allocation,
+                   options::OPT_fno_coro_aligned_allocation, false) &&
+      types::isCXX(InputType))
+    CmdArgs.push_back("-fcoro-aligned-allocation");
 
   Args.AddLastArg(CmdArgs, options::OPT_fdouble_square_bracket_attributes,
                   options::OPT_fno_double_square_bracket_attributes);

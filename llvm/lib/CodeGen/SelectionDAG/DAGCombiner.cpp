@@ -514,6 +514,8 @@ namespace {
     SDValue visitMSTORE(SDNode *N);
     SDValue visitMGATHER(SDNode *N);
     SDValue visitMSCATTER(SDNode *N);
+    SDValue visitVPGATHER(SDNode *N);
+    SDValue visitVPSCATTER(SDNode *N);
     SDValue visitFP_TO_FP16(SDNode *N);
     SDValue visitFP16_TO_FP(SDNode *N);
     SDValue visitFP_TO_BF16(SDNode *N);
@@ -10674,15 +10676,19 @@ bool refineUniformBase(SDValue &BasePtr, SDValue &Index, bool IndexIsScaled,
   if (IndexIsScaled)
     return false;
 
-  // For now we check only the LHS of the add.
-  SDValue LHS = Index.getOperand(0);
-  SDValue SplatVal = DAG.getSplatValue(LHS);
-  if (!SplatVal || SplatVal.getValueType() != BasePtr.getValueType())
-    return false;
-
-  BasePtr = SplatVal;
-  Index = Index.getOperand(1);
-  return true;
+  if (SDValue SplatVal = DAG.getSplatValue(Index.getOperand(0));
+      SplatVal && SplatVal.getValueType() == BasePtr.getValueType()) {
+    BasePtr = SplatVal;
+    Index = Index.getOperand(1);
+    return true;
+  }
+  if (SDValue SplatVal = DAG.getSplatValue(Index.getOperand(1));
+      SplatVal && SplatVal.getValueType() == BasePtr.getValueType()) {
+    BasePtr = SplatVal;
+    Index = Index.getOperand(0);
+    return true;
+  }
+  return false;
 }
 
 // Fold sext/zext of index into index type.
@@ -10715,6 +10721,37 @@ bool refineIndexType(SDValue &Index, ISD::MemIndexType &IndexType, EVT DataVT,
   }
 
   return false;
+}
+
+SDValue DAGCombiner::visitVPSCATTER(SDNode *N) {
+  VPScatterSDNode *MSC = cast<VPScatterSDNode>(N);
+  SDValue Mask = MSC->getMask();
+  SDValue Chain = MSC->getChain();
+  SDValue Index = MSC->getIndex();
+  SDValue Scale = MSC->getScale();
+  SDValue StoreVal = MSC->getValue();
+  SDValue BasePtr = MSC->getBasePtr();
+  SDValue VL = MSC->getVectorLength();
+  ISD::MemIndexType IndexType = MSC->getIndexType();
+  SDLoc DL(N);
+
+  // Zap scatters with a zero mask.
+  if (ISD::isConstantSplatVectorAllZeros(Mask.getNode()))
+    return Chain;
+
+  if (refineUniformBase(BasePtr, Index, MSC->isIndexScaled(), DAG)) {
+    SDValue Ops[] = {Chain, StoreVal, BasePtr, Index, Scale, Mask, VL};
+    return DAG.getScatterVP(DAG.getVTList(MVT::Other), MSC->getMemoryVT(),
+                            DL, Ops, MSC->getMemOperand(), IndexType);
+  }
+
+  if (refineIndexType(Index, IndexType, StoreVal.getValueType(), DAG)) {
+    SDValue Ops[] = {Chain, StoreVal, BasePtr, Index, Scale, Mask, VL};
+    return DAG.getScatterVP(DAG.getVTList(MVT::Other), MSC->getMemoryVT(),
+                            DL, Ops, MSC->getMemOperand(), IndexType);
+  }
+
+  return SDValue();
 }
 
 SDValue DAGCombiner::visitMSCATTER(SDNode *N) {
@@ -10808,6 +10845,34 @@ SDValue DAGCombiner::visitMSTORE(SDNode *N) {
                               MST->getOffset(), Mask, MST->getMemoryVT(),
                               MST->getMemOperand(), MST->getAddressingMode(),
                               /*IsTruncating=*/true);
+  }
+
+  return SDValue();
+}
+
+SDValue DAGCombiner::visitVPGATHER(SDNode *N) {
+  VPGatherSDNode *MGT = cast<VPGatherSDNode>(N);
+  SDValue Mask = MGT->getMask();
+  SDValue Chain = MGT->getChain();
+  SDValue Index = MGT->getIndex();
+  SDValue Scale = MGT->getScale();
+  SDValue BasePtr = MGT->getBasePtr();
+  SDValue VL = MGT->getVectorLength();
+  ISD::MemIndexType IndexType = MGT->getIndexType();
+  SDLoc DL(N);
+
+  if (refineUniformBase(BasePtr, Index, MGT->isIndexScaled(), DAG)) {
+    SDValue Ops[] = {Chain, BasePtr, Index, Scale, Mask, VL};
+    return DAG.getGatherVP(
+        DAG.getVTList(N->getValueType(0), MVT::Other), MGT->getMemoryVT(), DL,
+        Ops, MGT->getMemOperand(), IndexType);
+  }
+
+  if (refineIndexType(Index, IndexType, N->getValueType(0), DAG)) {
+    SDValue Ops[] = {Chain, BasePtr, Index, Scale, Mask, VL};
+    return DAG.getGatherVP(
+        DAG.getVTList(N->getValueType(0), MVT::Other), MGT->getMemoryVT(), DL,
+        Ops, MGT->getMemOperand(), IndexType);
   }
 
   return SDValue();
@@ -23567,6 +23632,15 @@ SDValue DAGCombiner::visitVECREDUCE(SDNode *N) {
 }
 
 SDValue DAGCombiner::visitVPOp(SDNode *N) {
+
+  if (N->getOpcode() == ISD::VP_GATHER)
+    if (SDValue SD = visitVPGATHER(N))
+      return SD;
+
+  if (N->getOpcode() == ISD::VP_SCATTER)
+    if (SDValue SD = visitVPSCATTER(N))
+      return SD;
+
   // VP operations in which all vector elements are disabled - either by
   // determining that the mask is all false or that the EVL is 0 - can be
   // eliminated.
