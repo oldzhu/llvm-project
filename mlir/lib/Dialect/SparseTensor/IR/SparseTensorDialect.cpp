@@ -216,11 +216,107 @@ LogicalResult SparseTensorEncodingAttr::verifyEncoding(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// Convenience Methods.
+//===----------------------------------------------------------------------===//
+
 SparseTensorEncodingAttr
 mlir::sparse_tensor::getSparseTensorEncoding(Type type) {
   if (auto ttp = type.dyn_cast<RankedTensorType>())
     return ttp.getEncoding().dyn_cast_or_null<SparseTensorEncodingAttr>();
   return nullptr;
+}
+
+bool mlir::sparse_tensor::isDenseDim(
+    SparseTensorEncodingAttr::DimLevelType dltp) {
+  return dltp == SparseTensorEncodingAttr::DimLevelType::Dense;
+}
+
+bool mlir::sparse_tensor::isCompressedDim(
+    SparseTensorEncodingAttr::DimLevelType dltp) {
+  switch (dltp) {
+  case SparseTensorEncodingAttr::DimLevelType::Compressed:
+  case SparseTensorEncodingAttr::DimLevelType::CompressedNu:
+  case SparseTensorEncodingAttr::DimLevelType::CompressedNo:
+  case SparseTensorEncodingAttr::DimLevelType::CompressedNuNo:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool mlir::sparse_tensor::isSingletonDim(
+    SparseTensorEncodingAttr::DimLevelType dltp) {
+  switch (dltp) {
+  case SparseTensorEncodingAttr::DimLevelType::Singleton:
+  case SparseTensorEncodingAttr::DimLevelType::SingletonNu:
+  case SparseTensorEncodingAttr::DimLevelType::SingletonNo:
+  case SparseTensorEncodingAttr::DimLevelType::SingletonNuNo:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool mlir::sparse_tensor::isDenseDim(RankedTensorType type, uint64_t d) {
+  assert(d < static_cast<uint64_t>(type.getRank()));
+  if (auto enc = getSparseTensorEncoding(type))
+    return isDenseDim(enc.getDimLevelType()[d]);
+  return true; // unannotated tensor is dense
+}
+
+bool mlir::sparse_tensor::isCompressedDim(RankedTensorType type, uint64_t d) {
+  assert(d < static_cast<uint64_t>(type.getRank()));
+  if (auto enc = getSparseTensorEncoding(type))
+    return isCompressedDim(enc.getDimLevelType()[d]);
+  return false; // unannotated tensor is dense
+}
+
+bool mlir::sparse_tensor::isSingletonDim(RankedTensorType type, uint64_t d) {
+  assert(d < static_cast<uint64_t>(type.getRank()));
+  if (auto enc = getSparseTensorEncoding(type))
+    return isSingletonDim(enc.getDimLevelType()[d]);
+  return false; // unannotated tensor is dense
+}
+
+bool mlir::sparse_tensor::isOrderedDim(
+    SparseTensorEncodingAttr::DimLevelType dltp) {
+  switch (dltp) {
+  case SparseTensorEncodingAttr::DimLevelType::CompressedNo:
+  case SparseTensorEncodingAttr::DimLevelType::CompressedNuNo:
+  case SparseTensorEncodingAttr::DimLevelType::SingletonNo:
+  case SparseTensorEncodingAttr::DimLevelType::SingletonNuNo:
+    return false;
+  default:
+    return true;
+  }
+}
+
+bool mlir::sparse_tensor::isUniqueDim(
+    SparseTensorEncodingAttr::DimLevelType dltp) {
+  switch (dltp) {
+  case SparseTensorEncodingAttr::DimLevelType::CompressedNu:
+  case SparseTensorEncodingAttr::DimLevelType::CompressedNuNo:
+  case SparseTensorEncodingAttr::DimLevelType::SingletonNu:
+  case SparseTensorEncodingAttr::DimLevelType::SingletonNuNo:
+    return false;
+  default:
+    return true;
+  }
+}
+
+bool mlir::sparse_tensor::isOrderedDim(RankedTensorType type, uint64_t d) {
+  assert(d < static_cast<uint64_t>(type.getRank()));
+  if (auto enc = getSparseTensorEncoding(type))
+    return isOrderedDim(enc.getDimLevelType()[d]);
+  return true; // unannotated tensor is dense (and thus ordered)
+}
+
+bool mlir::sparse_tensor::isUniqueDim(RankedTensorType type, uint64_t d) {
+  assert(d < static_cast<uint64_t>(type.getRank()));
+  if (auto enc = getSparseTensorEncoding(type))
+    return isUniqueDim(enc.getDimLevelType()[d]);
+  return true; // unannotated tensor is dense (and thus unique)
 }
 
 //===----------------------------------------------------------------------===//
@@ -453,6 +549,20 @@ LogicalResult ConcatenateOp::verify() {
   return success();
 }
 
+LogicalResult InsertOp::verify() {
+  RankedTensorType ttp = getTensor().getType().cast<RankedTensorType>();
+  if (ttp.getRank() != static_cast<int64_t>(getIndices().size()))
+    return emitOpError("incorrect number of indices");
+  return success();
+}
+
+LogicalResult CompressOp::verify() {
+  RankedTensorType ttp = getTensor().getType().cast<RankedTensorType>();
+  if (ttp.getRank() != 1 + static_cast<int64_t>(getIndices().size()))
+    return emitOpError("incorrect number of indices");
+  return success();
+}
+
 LogicalResult ForeachOp::verify() {
   auto t = getTensor().getType().cast<RankedTensorType>();
   auto args = getBody()->getArguments();
@@ -471,7 +581,6 @@ LogicalResult ForeachOp::verify() {
     emitError(llvm::formatv("Unmatched element type between input tensor and "
                             "block argument, expected:{0}, got: {1}",
                             elemTp, valueTp));
-
   return success();
 }
 
