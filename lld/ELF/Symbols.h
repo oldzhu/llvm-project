@@ -111,7 +111,7 @@ public:
   uint8_t symbolKind;
 
   // The partition whose dynamic symbol table contains this symbol's definition.
-  uint8_t partition = 1;
+  uint8_t partition;
 
   // True if this symbol is preemptible at load time.
   uint8_t isPreemptible : 1;
@@ -201,18 +201,10 @@ public:
   // truncated by Symbol::parseSymbolVersion().
   const char *getVersionSuffix() const { return nameData + nameSize; }
 
-  uint32_t getGotIdx() const {
-    return auxIdx == uint32_t(-1) ? uint32_t(-1) : symAux[auxIdx].gotIdx;
-  }
-  uint32_t getPltIdx() const {
-    return auxIdx == uint32_t(-1) ? uint32_t(-1) : symAux[auxIdx].pltIdx;
-  }
-  uint32_t getTlsDescIdx() const {
-    return auxIdx == uint32_t(-1) ? uint32_t(-1) : symAux[auxIdx].tlsDescIdx;
-  }
-  uint32_t getTlsGdIdx() const {
-    return auxIdx == uint32_t(-1) ? uint32_t(-1) : symAux[auxIdx].tlsGdIdx;
-  }
+  uint32_t getGotIdx() const { return symAux[auxIdx].gotIdx; }
+  uint32_t getPltIdx() const { return symAux[auxIdx].pltIdx; }
+  uint32_t getTlsDescIdx() const { return symAux[auxIdx].tlsDescIdx; }
+  uint32_t getTlsGdIdx() const { return symAux[auxIdx].tlsGdIdx; }
 
   bool isInGot() const { return getGotIdx() != uint32_t(-1); }
   bool isInPlt() const { return getPltIdx() != uint32_t(-1); }
@@ -241,7 +233,11 @@ public:
   // For example, if "this" is an undefined symbol and a new symbol is
   // a defined symbol, "this" is replaced with the new symbol.
   void mergeProperties(const Symbol &other);
-  void resolve(const Symbol &other);
+  void resolve(const Undefined &other);
+  void resolve(const CommonSymbol &other);
+  void resolve(const Defined &other);
+  void resolve(const LazyObject &other);
+  void resolve(const SharedSymbol &other);
 
   // If this is a lazy symbol, extract an input file and add the symbol
   // in the file to the symbol table. Calling this function on
@@ -251,24 +247,14 @@ public:
   void checkDuplicate(const Defined &other) const;
 
 private:
-  void resolveUndefined(const Undefined &other);
-  void resolveCommon(const CommonSymbol &other);
-  void resolveDefined(const Defined &other);
-  void resolveLazy(const LazyObject &other);
-  void resolveShared(const SharedSymbol &other);
-
   bool shouldReplace(const Defined &other) const;
 
 protected:
   Symbol(Kind k, InputFile *file, StringRef name, uint8_t binding,
          uint8_t stOther, uint8_t type)
       : file(file), nameData(name.data()), nameSize(name.size()), type(type),
-        binding(binding), stOther(stOther), symbolKind(k), isPreemptible(false),
-        isUsedInRegularObj(false), used(false), exportDynamic(false),
-        inDynamicList(false), referenced(false), referencedAfterWrap(false),
-        traced(false), hasVersionSuffix(false), isInIplt(false),
-        gotInIgot(false), folded(false), needsTocRestore(false),
-        scriptDefined(false), dsoProtected(false) {}
+        binding(binding), stOther(stOther), symbolKind(k),
+        exportDynamic(false) {}
 
   void overwrite(Symbol &sym, Kind k) const {
     if (sym.traced)
@@ -307,7 +293,7 @@ public:
 
   // Temporary flags used to communicate which symbol entries need PLT and GOT
   // entries during postScanRelocations();
-  std::atomic<uint16_t> flags = 0;
+  std::atomic<uint16_t> flags;
 
   // A symAux index used to access GOT/PLT entry indexes. This is allocated in
   // postScanRelocations().
@@ -334,7 +320,7 @@ public:
             NEEDS_TLSGD_TO_IE | NEEDS_GOT_DTPREL | NEEDS_TLSIE);
   }
   void allocateAux() {
-    assert(auxIdx == uint32_t(-1));
+    assert(auxIdx == 0);
     auxIdx = symAux.size();
     symAux.emplace_back();
   }
@@ -551,11 +537,10 @@ union SymbolUnion {
 };
 
 template <typename... T> Defined *makeDefined(T &&...args) {
-  auto *sym = new (reinterpret_cast<Defined *>(
-      getSpecificAllocSingleton<SymbolUnion>().Allocate()))
-      Defined(std::forward<T>(args)...);
-  sym->auxIdx = -1;
-  return sym;
+  auto *sym = getSpecificAllocSingleton<SymbolUnion>().Allocate();
+  memset(sym, 0, sizeof(Symbol));
+  auto &s = *new (reinterpret_cast<Defined *>(sym)) Defined(std::forward<T>(args)...);
+  return &s;
 }
 
 void reportDuplicate(const Symbol &sym, const InputFile *newFile,

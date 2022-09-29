@@ -2960,7 +2960,7 @@ void request_variables(const llvm::json::Object &request) {
 
       // "error" owns the error string so we must keep it alive as long as we
       // want to use the returns "const char *"
-      SBError error = top_scope->GetError();
+      lldb::SBError error = top_scope->GetError();
       const char *var_err = error.GetCString();
       if (var_err) {
         // Create a fake variable named "error" to explain why variables were
