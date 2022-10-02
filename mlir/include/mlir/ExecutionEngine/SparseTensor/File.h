@@ -44,7 +44,7 @@ namespace sparse_tensor {
 /// as well as providing the buffers and methods for parsing those headers.
 class SparseTensorFile final {
 public:
-  enum class ValueKind {
+  enum class ValueKind : uint8_t {
     // The value before calling `readHeader`.
     kInvalid = 0,
     // Values that can be set by `readMMEHeader`.
@@ -133,10 +133,10 @@ public:
   void assertMatchesShape(uint64_t rank, const uint64_t *shape) const;
 
 private:
-  /// Read the MME header of a general sparse matrix of type real.
+  /// Reads the MME header of a general sparse matrix of type real.
   void readMMEHeader();
 
-  /// Read the "extended" FROSTT header. Although not part of the
+  /// Reads the "extended" FROSTT header. Although not part of the
   /// documented format, we assume that the file starts with optional
   /// comments followed by two lines that define the rank, the number of
   /// nonzeros, and the dimensions sizes (one per rank) of the sparse tensor.
@@ -163,7 +163,7 @@ struct is_complex<std::complex<T>> final : public std::true_type {};
 /// Reads an element of a non-complex type for the current indices in
 /// coordinate scheme.
 template <typename V>
-inline typename std::enable_if<!is_complex<V>::value, V>::type
+inline std::enable_if_t<!is_complex<V>::value, V>
 readCOOValue(char **linePtr, bool is_pattern) {
   // The external formats always store these numerical values with the type
   // double, but we cast these values to the sparse tensor object type.
@@ -174,8 +174,8 @@ readCOOValue(char **linePtr, bool is_pattern) {
 /// Reads an element of a complex type for the current indices in
 /// coordinate scheme.
 template <typename V>
-inline typename std::enable_if<is_complex<V>::value, V>::type
-readCOOValue(char **linePtr, bool is_pattern) {
+inline std::enable_if_t<is_complex<V>::value, V> readCOOValue(char **linePtr,
+                                                              bool is_pattern) {
   // Read two values to make a complex. The external formats always store
   // numerical values with the type double, but we cast these values to the
   // sparse tensor object type. For a pattern tensor, we arbitrarily pick the
