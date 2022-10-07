@@ -6719,10 +6719,7 @@ cc_library(
     ],
     copts = ["-Dmlir_sparse_tensor_utils_EXPORTS"],
     includes = ["include"],
-    deps = [
-        ":mlir_float16_utils",
-        "//llvm:Support",
-    ],
+    deps = [":mlir_float16_utils"],
 )
 
 # We relist Enums.h because SparseTensorUtils.h includes/reexports it
@@ -8062,6 +8059,8 @@ cc_library(
     srcs = glob([
         "lib/Conversion/VectorToGPU/*.cpp",
         "lib/Conversion/VectorToGPU/*.h",
+        "lib/Dialect/NVGPU/Utils/*.cpp",
+        "include/mlir/Dialect/NVGPU/Utils/*.h",
     ]),
     hdrs = glob([
         "include/mlir/Conversion/VectorToGPU/*.h",
