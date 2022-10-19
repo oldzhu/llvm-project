@@ -2112,6 +2112,7 @@ cc_library(
         ":LinalgDialect",
         ":MathDialect",
         ":SparseTensorDialect",
+        ":SparseTensorEnums",
         "//llvm:Support",
     ],
 )
@@ -2152,7 +2153,6 @@ cc_library(
         ":Support",
         ":TensorDialect",
         ":Transforms",
-        ":VectorDialect",
         "//llvm:Support",
     ],
 )
