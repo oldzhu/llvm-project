@@ -71,6 +71,12 @@ def SparseTensor_ConvertOp : SparseTensor_Op<"convert",
     data structure transformations. Also, conversions from sparse tensor types
     into dense tensor types may be infeasible in terms of storage requirements.
 
+    Trivial dense-to-dense convert will be removed by canonicalization while
+    trivial sparse-to-sparse convert will be removed by the sparse codegen. This
+    is because we use trivial sparse-to-sparse convert to tell bufferization
+    that the sparse codegen will expand the tensor buffer into sparse tensor
+    storage.
+
     Examples:
 
     ```mlir
@@ -86,6 +92,7 @@ def SparseTensor_ConvertOp : SparseTensor_Op<"convert",
 
   }];
   let assemblyFormat = "$source attr-dict `:` type($source) `to` type($dest)";
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
@@ -158,6 +165,25 @@ def SparseTensor_ToValuesOp : SparseTensor_Op<"values", [Pure]>,
   }];
   let assemblyFormat = "$tensor attr-dict `:` type($tensor) `to` type($result)";
   let hasVerifier = 1;
+}
+
+def SparseTensor_NumberOfEntriesOp : SparseTensor_Op<"number_of_entries", [Pure]>,
+    Arguments<(ins AnySparseTensor:$tensor)>,
+    Results<(outs Index:$result)> {
+  let summary = "Returns the number of entries that are stored in the tensor.";
+  let description = [{
+    Returns the number of entries that are stored in the given sparse tensor.
+    Note that this is typically the number of nonzero elements in the tensor,
+    but since explicit zeros may appear in the storage formats, the more
+    accurate nomenclature is used.
+
+    Example:
+
+    ```mlir
+    %noe = sparse_tensor.number_of_entries %tensor : tensor<64x64xf64, #CSR>
+    ```
+  }];
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
 def SparseTensor_ConcatenateOp : SparseTensor_Op<"concatenate", [Pure]>,
