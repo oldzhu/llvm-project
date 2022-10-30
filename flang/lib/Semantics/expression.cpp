@@ -200,6 +200,10 @@ MaybeExpr ExpressionAnalyzer::Designate(DataRef &&ref) {
   const Symbol &last{ref.GetLastSymbol()};
   const Symbol &symbol{BypassGeneric(last).GetUltimate()};
   if (semantics::IsProcedure(symbol)) {
+    if (symbol.attrs().test(semantics::Attr::ABSTRACT)) {
+      Say("Abstract procedure interface '%s' may not be used as a designator"_err_en_US,
+          last.name());
+    }
     if (auto *component{std::get_if<Component>(&ref.u)}) {
       return Expr<SomeType>{ProcedureDesignator{std::move(*component)}};
     } else if (!std::holds_alternative<SymbolRef>(ref.u)) {
@@ -2340,6 +2344,10 @@ auto ExpressionAnalyzer::GetCalleeAndArguments(const parser::Name &name,
       // re-resolve name to the specific procedure
       name.symbol = const_cast<Symbol *>(resolution);
     }
+  } else if (IsProcedure(ultimate) &&
+      ultimate.attrs().test(semantics::Attr::ABSTRACT)) {
+    Say("Abstract procedure interface '%s' may not be referenced"_err_en_US,
+        name.source);
   } else {
     resolution = symbol;
   }
@@ -2843,6 +2851,14 @@ MaybeExpr ExpressionAnalyzer::Analyze(
     const parser::Expr::ComplexConstructor &x) {
   auto re{Analyze(std::get<0>(x.t).value())};
   auto im{Analyze(std::get<1>(x.t).value())};
+  if (re && re->Rank() > 0) {
+    context().Say(std::get<0>(x.t).value().source,
+        "Real part of complex constructor must be scalar"_err_en_US);
+  }
+  if (im && im->Rank() > 0) {
+    context().Say(std::get<1>(x.t).value().source,
+        "Imaginary part of complex constructor must be scalar"_err_en_US);
+  }
   if (re && im) {
     ConformabilityCheck(GetContextualMessages(), *re, *im);
   }
