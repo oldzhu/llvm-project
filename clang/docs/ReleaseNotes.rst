@@ -638,6 +638,9 @@ C++2b Feature Support
 CUDA/HIP Language Changes in Clang
 ----------------------------------
 
+ - Allow the use of ``__noinline__`` as a keyword (instead of ``__attribute__((noinline))``)
+   in lambda declarations.
+
 Objective-C Language Changes in Clang
 -------------------------------------
 
@@ -705,6 +708,7 @@ X86 Support in Clang
   * Support intrinsic of ``_mm(256)_cvtneobf16_ps``.
   * Support intrinsic of ``_mm(256)_cvtneoph_ps``.
   * Support intrinsic of ``_mm(256)_cvtneps_avx_pbh``.
+- ``-march=raptorlake`` and ``-march=meteorlake`` are now supported.
 
 WebAssembly Support in Clang
 ----------------------------
