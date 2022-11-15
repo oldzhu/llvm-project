@@ -1942,6 +1942,7 @@ cc_library(
         ":SCFDialect",
         ":SCFPassIncGen",
         ":SCFUtils",
+        ":SideEffectInterfaces",
         ":Support",
         ":TensorDialect",
         ":TensorTransforms",
@@ -2553,6 +2554,7 @@ cc_library(
         ":ArithDialect",
         ":FuncDialect",
         ":IR",
+        ":SideEffectInterfaces",
         ":Support",
         ":ViewLikeInterface",
         "//llvm:Support",
@@ -2855,6 +2857,7 @@ cc_library(
         ":FuncDialect",
         ":IR",
         ":SCFDialect",
+        ":SideEffectInterfaces",
         ":Support",
         ":Transforms",
         "//llvm:Support",
@@ -3337,6 +3340,7 @@ cc_library(
         ":MemRefDialect",
         ":Pass",
         ":SCFDialect",
+        ":SideEffectInterfaces",
         ":Support",
         ":TensorDialect",
         ":Transforms",
@@ -3841,6 +3845,7 @@ cc_library(
         ":ROCDLToLLVMIRTranslation",
         ":SCFDialect",
         ":FuncDialect",
+        ":SideEffectInterfaces",
         ":Support",
         ":Transforms",
         ":ToLLVMIRTranslation",
@@ -5694,6 +5699,7 @@ cc_library(
         ":LoopLikeInterface",
         ":Pass",
         ":Rewrite",
+        ":SideEffectInterfaces",
         ":Support",
         ":TransformUtils",
         ":TransformsPassIncGen",
@@ -5731,6 +5737,7 @@ cc_library(
         ":MemRefDialect",
         ":Pass",
         ":SCFDialect",
+        ":SideEffectInterfaces",
         ":Support",
         ":TransformUtils",
         ":Transforms",
@@ -8608,10 +8615,27 @@ gentbl_cc_library(
             ],
             "include/mlir/Dialect/Tosa/Transforms/Passes.h.inc",
         ),
+        (
+            [
+                "-gen-enum-decls",
+                "-name=TosaOpt",
+            ],
+            "include/mlir/Dialect/Tosa/Transforms/PassesEnums.h.inc",
+        ),
+        (
+            [
+                "-gen-enum-defs",
+                "-name=TosaOpt",
+            ],
+            "include/mlir/Dialect/Tosa/Transforms/PassesEnums.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Tosa/Transforms/Passes.td",
-    deps = [":PassBaseTdFiles"],
+    deps = [
+        ":OpBaseTdFiles",
+        ":PassBaseTdFiles",
+    ],
 )
 
 cc_library(
@@ -9854,6 +9878,17 @@ gentbl_cc_library(
     deps = [":BufferizationOpsTdFiles"],
 )
 
+td_library(
+    name = "BufferizationEnumsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Bufferization/IR/BufferizationEnums.td",
+    ],
+    includes = ["include"],
+    deps = [
+        ":OpBaseTdFiles",
+    ],
+)
+
 gentbl_cc_library(
     name = "BufferizationEnumsIncGen",
     strip_include_prefix = "include",
@@ -9869,7 +9904,7 @@ gentbl_cc_library(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Bufferization/IR/BufferizationEnums.td",
-    deps = [":BufferizationOpsTdFiles"],
+    deps = [":BufferizationEnumsTdFiles"],
 )
 
 td_library(
@@ -10017,6 +10052,7 @@ cc_library(
         ":Analysis",
         ":ArithDialect",
         ":BufferizationDialect",
+        ":BufferizationEnumsIncGen",
         ":BufferizationPassIncGen",
         ":ControlFlowInterfaces",
         ":FuncDialect",
@@ -10024,6 +10060,7 @@ cc_library(
         ":LoopLikeInterface",
         ":MemRefDialect",
         ":Pass",
+        ":SideEffectInterfaces",
         ":TensorDialect",
         ":Transforms",
         ":ViewLikeInterface",
