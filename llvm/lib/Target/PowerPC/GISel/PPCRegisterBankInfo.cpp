@@ -36,6 +36,15 @@ PPCRegisterBankInfo::getRegBankFromRegClass(const TargetRegisterClass &RC,
   case PPC::G8RC_NOX0RegClassID:
   case PPC::G8RC_and_G8RC_NOX0RegClassID:
     return getRegBank(PPC::GPRRegBankID);
+  case PPC::VSFRCRegClassID:
+  case PPC::SPILLTOVSRRC_and_VSFRCRegClassID:
+  case PPC::SPILLTOVSRRC_and_VFRCRegClassID:
+  case PPC::SPILLTOVSRRC_and_F4RCRegClassID:
+  case PPC::F8RCRegClassID:
+  case PPC::VFRCRegClassID:
+  case PPC::VSSRCRegClassID:
+  case PPC::F4RCRegClassID:
+    return getRegBank(PPC::FPRRegBankID);
   default:
     llvm_unreachable("Unexpected register class");
   }
@@ -54,12 +63,20 @@ PPCRegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
       return Mapping;
   }
 
+  const MachineFunction &MF = *MI.getParent()->getParent();
+  const MachineRegisterInfo &MRI = MF.getRegInfo();
+  const TargetSubtargetInfo &STI = MF.getSubtarget();
+  const TargetRegisterInfo &TRI = *STI.getRegisterInfo();
+
   unsigned NumOperands = MI.getNumOperands();
   const ValueMapping *OperandsMapping = nullptr;
   unsigned Cost = 1;
   unsigned MappingID = DefaultMappingID;
 
   switch (Opc) {
+    // Arithmetic ops.
+  case TargetOpcode::G_ADD:
+  case TargetOpcode::G_SUB:
     // Bitwise ops.
   case TargetOpcode::G_AND:
   case TargetOpcode::G_OR:
@@ -68,6 +85,17 @@ PPCRegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
            "This code is for instructions with 3 or less operands");
     OperandsMapping = getValueMapping(PMI_GPR64);
     break;
+  case TargetOpcode::G_FADD:
+  case TargetOpcode::G_FSUB:
+  case TargetOpcode::G_FMUL:
+  case TargetOpcode::G_FDIV: {
+    Register SrcReg = MI.getOperand(1).getReg();
+    unsigned Size = getSizeInBits(SrcReg, MRI, TRI);
+
+    assert((Size == 32 || Size == 64) && "Unsupported floating point types!\n");
+    OperandsMapping = getValueMapping(Size == 32 ? PMI_FPR32 : PMI_FPR64);
+    break;
+  }
   case TargetOpcode::G_CONSTANT:
     OperandsMapping = getOperandsMapping({getValueMapping(PMI_GPR64), nullptr});
     break;
