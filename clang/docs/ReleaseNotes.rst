@@ -304,6 +304,13 @@ Bug Fixes
 - GNU attributes being applied prior to standard attributes would be handled
   improperly, which was corrected to match the behaviour exhibited by GCC.
   `Issue 58229 <https://github.com/llvm/llvm-project/issues/58229>`_
+- The builtin type trait ``__is_aggregate`` now returns ``true`` for arrays of incomplete
+  types in accordance with the suggested fix for `LWG3823 <https://cplusplus.github.io/LWG/issue3823>`_
+- Fix bug with using enum that could lead to enumerators being treated as if
+  they were part of an overload set. This fixes
+  `Issue 58067 <https://github.com/llvm/llvm-project/issues/58057>`_
+  `Issue 59014 <https://github.com/llvm/llvm-project/issues/59014>`_
+  `Issue 54746 <https://github.com/llvm/llvm-project/issues/54746>`_
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -443,6 +450,10 @@ Non-comprehensive list of changes in this release
   It can be used to writing conditionally constexpr code that uses builtins.
 - The time profiler (using ``-ftime-trace`` option) now traces various constant
   evaluation events.
+- Clang can now generate a PCH when using ``-fdelayed-template-parsing`` for
+  code with templates containing loop hint pragmas, OpenMP pragmas, and
+  ``#pragma unused``.
+
 
 New Compiler Flags
 ------------------
@@ -605,6 +616,8 @@ C++ Language Changes in Clang
   conforming GNU extensions. Projects incompatible with C++17 can add
   ``-std=gnu++14`` to their build settings to restore the previous behaviour.
 - Implemented DR2358 allowing init captures in lambdas in default arguments.
+- implemented `DR2654 <https://wg21.link/cwg2654>`_ which undeprecates
+  all compound assignements operations on volatile qualified variables.
 
 C++20 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
@@ -661,7 +674,7 @@ C++2b Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 
 - Support label at end of compound statement (`P2324 <https://wg21.link/p2324r2>`_).
-- Implemented `P1169R4: static operator() <https://wg21.link/P1169R4>`_.
+- Implemented `P1169R4: static operator() <https://wg21.link/P1169R4>`_ and `P2589R1: static operator[] <https://wg21.link/P2589R1>`_.
 - Implemented "char8_t Compatibility and Portability Fix" (`P2513R3 <https://wg21.link/P2513R3>`_).
   This change was applied to C++20 as a Defect Report.
 - Implemented "Permitting static constexpr variables in constexpr functions" (`P2647R1 <https://wg21.link/P2647R1>_`).
