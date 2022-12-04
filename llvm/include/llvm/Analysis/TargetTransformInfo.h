@@ -805,6 +805,9 @@ public:
   MemCmpExpansionOptions enableMemCmpExpansion(bool OptSize,
                                                bool IsZeroCmp) const;
 
+  /// Should the Select Optimization pass be enabled and ran.
+  bool enableSelectOptimize() const;
+
   /// Enable matching of interleaved access groups.
   bool enableInterleavedAccessVectorization() const;
 
@@ -1110,10 +1113,11 @@ public:
   /// cases, like in broadcast loads.
   /// NOTE: For subvector extractions Tp represents the source type.
   InstructionCost
-  getShuffleCost(ShuffleKind Kind, VectorType *Tp, ArrayRef<int> Mask = None,
+  getShuffleCost(ShuffleKind Kind, VectorType *Tp,
+                 ArrayRef<int> Mask = std::nullopt,
                  TTI::TargetCostKind CostKind = TTI::TCK_RecipThroughput,
                  int Index = 0, VectorType *SubTp = nullptr,
-                 ArrayRef<const Value *> Args = None) const;
+                 ArrayRef<const Value *> Args = std::nullopt) const;
 
   /// Represents a hint about the context in which a cast is used.
   ///
@@ -1682,6 +1686,7 @@ public:
   virtual bool enableAggressiveInterleaving(bool LoopHasReductions) = 0;
   virtual MemCmpExpansionOptions
   enableMemCmpExpansion(bool OptSize, bool IsZeroCmp) const = 0;
+  virtual bool enableSelectOptimize() = 0;
   virtual bool enableInterleavedAccessVectorization() = 0;
   virtual bool enableMaskedInterleavedAccessVectorization() = 0;
   virtual bool isFPVectorizationPotentiallyUnsafe() = 0;
@@ -2171,6 +2176,9 @@ public:
   }
   bool enableInterleavedAccessVectorization() override {
     return Impl.enableInterleavedAccessVectorization();
+  }
+  bool enableSelectOptimize() override {
+    return Impl.enableSelectOptimize();
   }
   bool enableMaskedInterleavedAccessVectorization() override {
     return Impl.enableMaskedInterleavedAccessVectorization();

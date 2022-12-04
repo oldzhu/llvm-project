@@ -341,7 +341,7 @@ static std::string getFSProfileFile(const TargetMachine *TM) {
   if (!FSProfileFile.empty())
     return FSProfileFile.getValue();
   const Optional<PGOOptions> &PGOOpt = TM->getPGOOption();
-  if (PGOOpt == None || PGOOpt->Action != PGOOptions::SampleUse)
+  if (PGOOpt == std::nullopt || PGOOpt->Action != PGOOptions::SampleUse)
     return std::string();
   return PGOOpt->ProfileFile;
 }
@@ -352,7 +352,7 @@ static std::string getFSRemappingFile(const TargetMachine *TM) {
   if (!FSRemappingFile.empty())
     return FSRemappingFile.getValue();
   const Optional<PGOOptions> &PGOOpt = TM->getPGOOption();
-  if (PGOOpt == None || PGOOpt->Action != PGOOptions::SampleUse)
+  if (PGOOpt == std::nullopt || PGOOpt->Action != PGOOptions::SampleUse)
     return std::string();
   return PGOOpt->ProfileRemappingFile;
 }
@@ -1522,6 +1522,9 @@ void TargetPassConfig::addOptimizedRegAlloc() {
 
 /// Add passes that optimize machine instructions after register allocation.
 void TargetPassConfig::addMachineLateOptimization() {
+  // Cleanup of redundant immediate/address loads.
+  addPass(&MachineLateInstrsCleanupID);
+
   // Branch folding must be run after regalloc and prolog/epilog insertion.
   addPass(&BranchFolderPassID);
 
