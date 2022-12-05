@@ -15,7 +15,6 @@
 
 #include "AArch64.h"
 #include "AArch64RegisterInfo.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/Support/TypeSize.h"
 
@@ -389,7 +388,7 @@ struct UsedNZCV {
 
 /// \returns Conditions flags used after \p CmpInstr in its MachineBB if  NZCV
 /// flags are not alive in successors of the same \p CmpInstr and \p MI parent.
-/// \returns None otherwise.
+/// \returns std::nullopt otherwise.
 ///
 /// Collect instructions using that flags in \p CCUseInstrs if provided.
 std::optional<UsedNZCV>

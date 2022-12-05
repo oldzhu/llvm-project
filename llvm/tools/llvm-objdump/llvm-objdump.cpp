@@ -1271,7 +1271,7 @@ static void createFakeELFSections(ObjectFile &Obj) {
 }
 
 // Tries to fetch a more complete version of the given object file using its
-// Build ID. Returns None if nothing was found.
+// Build ID. Returns std::nullopt if nothing was found.
 static std::optional<OwningBinary<Binary>>
 fetchBinaryByBuildID(const ObjectFile &Obj) {
   std::optional<object::BuildIDRef> BuildID = getBuildID(&Obj);
@@ -1681,8 +1681,8 @@ static void disassembleObject(const Target *TheTarget, ObjectFile &Obj,
                                   SectionAddr + Start, CommentStream);
 
         if (!Status) {
-          // If onSymbolStart returns None, that means it didn't trigger any
-          // interesting handling for this symbol. Try the other symbols
+          // If onSymbolStart returns std::nullopt, that means it didn't trigger
+          // any interesting handling for this symbol. Try the other symbols
           // defined at this address.
           continue;
         }
