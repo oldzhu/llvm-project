@@ -54,9 +54,9 @@ static std::string getOptionSpelling(const Record &R) {
 
 static void emitNameUsingSpelling(raw_ostream &OS, const Record &R) {
   size_t PrefixLength;
-  OS << "&";
+  OS << "llvm::StringRef(";
   write_cstring(OS, StringRef(getOptionSpelling(R, PrefixLength)));
-  OS << "[" << PrefixLength << "]";
+  OS << ").substr(" << PrefixLength << ")";
 }
 
 class MarshallingInfo {
@@ -129,7 +129,7 @@ struct SimpleEnumValueTable {
     OS << TableIndex;
   }
 
-  Optional<StringRef> emitValueTable(raw_ostream &OS) const {
+  std::optional<StringRef> emitValueTable(raw_ostream &OS) const {
     if (TableIndex == -1)
       return {};
     OS << "static const SimpleEnumValue " << ValueTableName << "[] = {\n";
