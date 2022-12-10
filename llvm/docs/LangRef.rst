@@ -2560,7 +2560,7 @@ provided a dynamic value, for example:
 If the operand bundle value violates any requirements on the attribute value,
 the behavior is undefined, unless one of the following exceptions applies:
 
-* ``"assume"`` operand bundles may specify a non-power-of-two alignment
+* ``"align"`` operand bundles may specify a non-power-of-two alignment
   (including a zero alignment). If this is the case, then the pointer value
   must be a null pointer, otherwise the behavior is undefined.
 
@@ -22084,7 +22084,7 @@ This is an overloaded intrinsic.
 Overview:
 """""""""
 
-Predicated bswap of two vectors of integers.
+Predicated bswap of a vector of integers.
 
 
 Arguments:
