@@ -670,7 +670,7 @@ void llvm::CloneAndPruneIntoFromInst(Function *NewFunc, const Function *OldFunc,
       continue; // Dead block.
 
     // Add the new block to the new function.
-    NewFunc->getBasicBlockList().push_back(NewBB);
+    NewFunc->insertBasicBlockAt(NewFunc->end(), NewBB);
 
     // Handle PHI nodes specially, as we have to remove references to dead
     // blocks.
@@ -1013,10 +1013,9 @@ Loop *llvm::cloneLoopWithPreheader(BasicBlock *Before, BasicBlock *LoopDomBB,
   }
 
   // Move them physically from the end of the block list.
-  F->getBasicBlockList().splice(Before->getIterator(), F->getBasicBlockList(),
-                                NewPH);
-  F->getBasicBlockList().splice(Before->getIterator(), F->getBasicBlockList(),
-                                NewLoop->getHeader()->getIterator(), F->end());
+  F->splice(Before->getIterator(), F, NewPH->getIterator());
+  F->splice(Before->getIterator(), F, NewLoop->getHeader()->getIterator(),
+            F->end());
 
   return NewLoop;
 }
