@@ -689,7 +689,7 @@ public:
 
   /// Insert \p BB in the basic block list at \p Position. \Returns an iterator
   /// to the newly inserted BB.
-  Function::iterator insertBasicBlockAt(Function::iterator Position, BasicBlock *BB) {
+  Function::iterator insert(Function::iterator Position, BasicBlock *BB) {
     return BasicBlocks.insert(Position, BB);
   }
 
@@ -715,9 +715,25 @@ public:
               Function::iterator FromBeginIt,
               Function::iterator FromEndIt);
 
+  /// Erases a range of BasicBlocks from \p FromIt to (not including) \p ToIt.
+  /// \Returns \p ToIt.
+  Function::iterator erase(Function::iterator FromIt, Function::iterator ToIt);
+
+private:
+  // These need access to the underlying BB list.
+  friend void BasicBlock::removeFromParent();
+  friend iplist<BasicBlock>::iterator BasicBlock::eraseFromParent();
+  template <class BB_t, class BB_i_t, class BI_t, class II_t>
+  friend class InstIterator;
+  friend class llvm::SymbolTableListTraits<llvm::BasicBlock>;
+  friend class llvm::ilist_node_with_parent<llvm::BasicBlock, llvm::Function>;
+
   /// Get the underlying elements of the Function... the basic block list is
   /// empty for external functions.
   ///
+  /// This is deliberately private because we have implemented an adequate set
+  /// of functions to modify the list, including Function::splice(),
+  /// Function::erase(), Function::insert() etc.
   const BasicBlockListType &getBasicBlockList() const { return BasicBlocks; }
         BasicBlockListType &getBasicBlockList()       { return BasicBlocks; }
 
@@ -725,6 +741,7 @@ public:
     return &Function::BasicBlocks;
   }
 
+public:
   const BasicBlock       &getEntryBlock() const   { return front(); }
         BasicBlock       &getEntryBlock()         { return front(); }
 

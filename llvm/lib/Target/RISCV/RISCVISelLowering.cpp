@@ -59,6 +59,12 @@ static cl::opt<bool>
                               "VWADD_W) with splat constants"),
                      cl::init(false));
 
+static cl::opt<unsigned> NumRepeatedDivisors(
+    DEBUG_TYPE "-fp-repeated-divisors", cl::Hidden,
+    cl::desc("Set the minimum number of repetitions of a divisor to allow "
+             "transformation to multiplications by the reciprocal"),
+    cl::init(2));
+
 RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
                                          const RISCVSubtarget &STI)
     : TargetLowering(TM), Subtarget(STI) {
@@ -1724,6 +1730,10 @@ bool RISCVTargetLowering::isLegalElementTypeForRVV(Type *ScalarTy) const {
     return Subtarget.hasVInstructionsF64();
 
   return false;
+}
+
+unsigned RISCVTargetLowering::combineRepeatedFPDivisors() const {
+  return NumRepeatedDivisors;
 }
 
 static SDValue getVLOperand(SDValue Op) {
@@ -12060,6 +12070,10 @@ SDValue RISCVTargetLowering::LowerFormalArguments(
     InVals.push_back(ArgValue);
   }
 
+  if (any_of(ArgLocs,
+             [](CCValAssign &VA) { return VA.getLocVT().isScalableVector(); }))
+    MF.getInfo<RISCVMachineFunctionInfo>()->setIsVectorCall();
+
   if (IsVarArg) {
     ArrayRef<MCPhysReg> ArgRegs = makeArrayRef(ArgGPRs);
     unsigned Idx = CCInfo.getFirstUnallocated(ArgRegs);
@@ -12530,7 +12544,7 @@ RISCVTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
                                  const SmallVectorImpl<ISD::OutputArg> &Outs,
                                  const SmallVectorImpl<SDValue> &OutVals,
                                  const SDLoc &DL, SelectionDAG &DAG) const {
-  const MachineFunction &MF = DAG.getMachineFunction();
+  MachineFunction &MF = DAG.getMachineFunction();
   const RISCVSubtarget &STI = MF.getSubtarget<RISCVSubtarget>();
 
   // Stores the assignment of the return value to a location.
@@ -12600,6 +12614,10 @@ RISCVTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   if (Glue.getNode()) {
     RetOps.push_back(Glue);
   }
+
+  if (any_of(RVLocs,
+             [](CCValAssign &VA) { return VA.getLocVT().isScalableVector(); }))
+    MF.getInfo<RISCVMachineFunctionInfo>()->setIsVectorCall();
 
   unsigned RetOpc = RISCVISD::RET_FLAG;
   // Interrupt service routines use different return instructions.

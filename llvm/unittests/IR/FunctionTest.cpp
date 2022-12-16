@@ -206,34 +206,34 @@ bar_bb2:
 
   // Insert foo_bb0 into bar() at the very top.
   FooBB0->removeFromParent();
-  auto It = BarF->insertBasicBlockAt(BarF->begin(), FooBB0);
+  auto It = BarF->insert(BarF->begin(), FooBB0);
   EXPECT_EQ(BarBB0->getPrevNode(), FooBB0);
   EXPECT_EQ(It, FooBB0->getIterator());
 
   // Insert foo_bb0 into bar() at the very end.
   FooBB0->removeFromParent();
-  It = BarF->insertBasicBlockAt(BarF->end(), FooBB0);
+  It = BarF->insert(BarF->end(), FooBB0);
   EXPECT_EQ(FooBB0->getPrevNode(), BarBB2);
   EXPECT_EQ(FooBB0->getNextNode(), nullptr);
   EXPECT_EQ(It, FooBB0->getIterator());
 
   // Insert foo_bb0 into bar() just before bar_bb0.
   FooBB0->removeFromParent();
-  It = BarF->insertBasicBlockAt(BarBB0->getIterator(), FooBB0);
+  It = BarF->insert(BarBB0->getIterator(), FooBB0);
   EXPECT_EQ(FooBB0->getPrevNode(), nullptr);
   EXPECT_EQ(FooBB0->getNextNode(), BarBB0);
   EXPECT_EQ(It, FooBB0->getIterator());
 
   // Insert foo_bb0 into bar() just before bar_bb1.
   FooBB0->removeFromParent();
-  It = BarF->insertBasicBlockAt(BarBB1->getIterator(), FooBB0);
+  It = BarF->insert(BarBB1->getIterator(), FooBB0);
   EXPECT_EQ(FooBB0->getPrevNode(), BarBB0);
   EXPECT_EQ(FooBB0->getNextNode(), BarBB1);
   EXPECT_EQ(It, FooBB0->getIterator());
 
   // Insert foo_bb0 into bar() just before bar_bb2.
   FooBB0->removeFromParent();
-  It = BarF->insertBasicBlockAt(BarBB2->getIterator(), FooBB0);
+  It = BarF->insert(BarBB2->getIterator(), FooBB0);
   EXPECT_EQ(FooBB0->getPrevNode(), BarBB1);
   EXPECT_EQ(FooBB0->getNextNode(), BarBB2);
   EXPECT_EQ(It, FooBB0->getIterator());
@@ -443,4 +443,47 @@ TEST(FunctionTest, SpliceEndBeforeBegin) {
                "FromBeginIt not before FromEndIt!");
 }
 #endif //EXPENSIVE_CHECKS
+
+TEST(FunctionTest, EraseBBs) {
+  LLVMContext Ctx;
+  std::unique_ptr<Module> M = parseIR(Ctx, R"(
+    define void @foo() {
+     bb1:
+       br label %bb2
+     bb2:
+       br label %bb3
+     bb3:
+       br label %bb4
+     bb4:
+       br label %bb5
+     bb5:
+       ret void
+    }
+)");
+
+  Function *F = M->getFunction("foo");
+  BasicBlock *BB1 = getBBWithName(F, "bb1");
+  BasicBlock *BB2 = getBBWithName(F, "bb2");
+  BasicBlock *BB3 = getBBWithName(F, "bb3");
+  BasicBlock *BB4 = getBBWithName(F, "bb4");
+  BasicBlock *BB5 = getBBWithName(F, "bb5");
+  EXPECT_EQ(F->size(), 5u);
+
+  // Erase BB2.
+  BB1->getTerminator()->eraseFromParent();
+  auto It = F->erase(BB2->getIterator(), std::next(BB2->getIterator()));
+  EXPECT_EQ(F->size(), 4u);
+  // Check that the iterator returned matches the node after the erased one.
+  EXPECT_EQ(It, BB3->getIterator());
+
+  It = F->begin();
+  EXPECT_EQ(&*It++, BB1);
+  EXPECT_EQ(&*It++, BB3);
+  EXPECT_EQ(&*It++, BB4);
+  EXPECT_EQ(&*It++, BB5);
+
+  // Erase all BBs.
+  It = F->erase(F->begin(), F->end());
+  EXPECT_EQ(F->size(), 0u);
+}
 } // end namespace
