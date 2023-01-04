@@ -6042,33 +6042,34 @@ SDValue TargetLowering::BuildUDIV(SDNode *N, SelectionDAG &DAG,
     // FIXME: We should use a narrower constant when the upper
     // bits are known to be zero.
     const APInt& Divisor = C->getAPIntValue();
-    UnsignedDivisionByConstantInfo magics =
-        UnsignedDivisionByConstantInfo::get(Divisor, LeadingZeros);
+
+    bool SelNPQ = false;
+    APInt Magic(Divisor.getBitWidth(), 0);
     unsigned PreShift = 0, PostShift = 0;
 
-    // If the divisor is even, we can avoid using the expensive fixup by
-    // shifting the divided value upfront.
-    if (magics.IsAdd && !Divisor[0]) {
-      PreShift = Divisor.countTrailingZeros();
-      // Get magic number for the shifted divisor.
-      magics = UnsignedDivisionByConstantInfo::get(Divisor.lshr(PreShift),
-                                                   PreShift + LeadingZeros);
-      assert(!magics.IsAdd && "Should use cheap fixup now");
-    }
+    // Magic algorithm doesn't work for division by 1. We need to emit a select
+    // at the end.
+    // TODO: Use undef values for divisor of 1.
+    if (!Divisor.isOne()) {
+      UnsignedDivisionByConstantInfo magics =
+          UnsignedDivisionByConstantInfo::get(Divisor, LeadingZeros);
 
-    unsigned SelNPQ;
-    if (!magics.IsAdd || Divisor.isOne()) {
-      assert(magics.ShiftAmount < Divisor.getBitWidth() &&
-             "We shouldn't generate an undefined shift!");
-      PostShift = magics.ShiftAmount;
-      SelNPQ = false;
-    } else {
-      PostShift = magics.ShiftAmount - 1;
-      SelNPQ = true;
+      Magic = std::move(magics.Magic);
+
+      if (!magics.IsAdd) {
+        assert(magics.ShiftAmount < Divisor.getBitWidth() &&
+               "We shouldn't generate an undefined shift!");
+        PostShift = magics.ShiftAmount;
+        PreShift = magics.PreShift;
+      } else {
+        assert(magics.PreShift == 0 && "Unexpected pre-shift");
+        PostShift = magics.ShiftAmount - 1;
+        SelNPQ = true;
+      }
     }
 
     PreShifts.push_back(DAG.getConstant(PreShift, dl, ShSVT));
-    MagicFactors.push_back(DAG.getConstant(magics.Magic, dl, SVT));
+    MagicFactors.push_back(DAG.getConstant(Magic, dl, SVT));
     NPQFactors.push_back(
         DAG.getConstant(SelNPQ ? APInt::getOneBitSet(EltBits, EltBits - 1)
                                : APInt::getZero(EltBits),
@@ -8390,6 +8391,33 @@ SDValue TargetLowering::expandCTLZ(SDNode *Node, SelectionDAG &DAG) const {
   return DAG.getNode(ISD::CTPOP, dl, VT, Op);
 }
 
+SDValue TargetLowering::expandVPCTLZ(SDNode *Node, SelectionDAG &DAG) const {
+  SDLoc dl(Node);
+  EVT VT = Node->getValueType(0);
+  EVT ShVT = getShiftAmountTy(VT, DAG.getDataLayout());
+  SDValue Op = Node->getOperand(0);
+  SDValue Mask = Node->getOperand(1);
+  SDValue VL = Node->getOperand(2);
+  unsigned NumBitsPerElt = VT.getScalarSizeInBits();
+
+  // do this:
+  // x = x | (x >> 1);
+  // x = x | (x >> 2);
+  // ...
+  // x = x | (x >>16);
+  // x = x | (x >>32); // for 64-bit input
+  // return popcount(~x);
+  for (unsigned i = 0; (1U << i) < NumBitsPerElt; ++i) {
+    SDValue Tmp = DAG.getConstant(1ULL << i, dl, ShVT);
+    Op = DAG.getNode(ISD::VP_OR, dl, VT, Op,
+                     DAG.getNode(ISD::VP_LSHR, dl, VT, Op, Tmp, Mask, VL), Mask,
+                     VL);
+  }
+  Op = DAG.getNode(ISD::VP_XOR, dl, VT, Op, DAG.getConstant(-1, dl, VT), Mask,
+                   VL);
+  return DAG.getNode(ISD::VP_CTPOP, dl, VT, Op, Mask, VL);
+}
+
 SDValue TargetLowering::CTTZTableLookup(SDNode *Node, SelectionDAG &DAG,
                                         const SDLoc &DL, EVT VT, SDValue Op,
                                         unsigned BitWidth) const {
@@ -8488,6 +8516,22 @@ SDValue TargetLowering::expandCTTZ(SDNode *Node, SelectionDAG &DAG) const {
   }
 
   return DAG.getNode(ISD::CTPOP, dl, VT, Tmp);
+}
+
+SDValue TargetLowering::expandVPCTTZ(SDNode *Node, SelectionDAG &DAG) const {
+  SDValue Op = Node->getOperand(0);
+  SDValue Mask = Node->getOperand(1);
+  SDValue VL = Node->getOperand(2);
+  SDLoc dl(Node);
+  EVT VT = Node->getValueType(0);
+
+  // Same as the vector part of expandCTTZ, use: popcount(~x & (x - 1))
+  SDValue Not = DAG.getNode(ISD::VP_XOR, dl, VT, Op,
+                            DAG.getConstant(-1, dl, VT), Mask, VL);
+  SDValue MinusOne = DAG.getNode(ISD::VP_SUB, dl, VT, Op,
+                                 DAG.getConstant(1, dl, VT), Mask, VL);
+  SDValue Tmp = DAG.getNode(ISD::VP_AND, dl, VT, Not, MinusOne, Mask, VL);
+  return DAG.getNode(ISD::VP_CTPOP, dl, VT, Tmp, Mask, VL);
 }
 
 SDValue TargetLowering::expandABS(SDNode *N, SelectionDAG &DAG,
