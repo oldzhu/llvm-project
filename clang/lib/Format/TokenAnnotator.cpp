@@ -166,10 +166,9 @@ private:
         // parameter cases, but should not alter program semantics.
         if (CurrentToken->Next && CurrentToken->Next->is(tok::greater) &&
             Left->ParentBracket != tok::less &&
-            (isKeywordWithCondition(*Line.First) ||
-             CurrentToken->getStartOfNonWhitespace() ==
-                 CurrentToken->Next->getStartOfNonWhitespace().getLocWithOffset(
-                     -1))) {
+            CurrentToken->getStartOfNonWhitespace() ==
+                CurrentToken->Next->getStartOfNonWhitespace().getLocWithOffset(
+                    -1)) {
           return false;
         }
         Left->MatchingParen = CurrentToken;
@@ -1289,6 +1288,10 @@ private:
         Tok->setType(TT_TrailingReturnArrow);
       }
       break;
+    case tok::eof:
+      if (Style.InsertNewlineAtEOF && Tok->NewlinesBefore == 0)
+        Tok->NewlinesBefore = 1;
+      break;
     default:
       break;
     }
@@ -1686,8 +1689,8 @@ private:
         if (!Tok)
           return false;
 
-        if (Tok->isOneOf(tok::kw_class, tok::kw_enum, tok::kw_concept,
-                         tok::kw_struct, tok::kw_using)) {
+        if (Tok->isOneOf(tok::kw_class, tok::kw_enum, tok::kw_struct,
+                         tok::kw_using)) {
           return false;
         }
 
@@ -3526,7 +3529,8 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
     if (Right.is(TT_BlockComment))
       return true;
     // foo() -> const Bar * override/final
-    if (Right.isOneOf(Keywords.kw_override, Keywords.kw_final) &&
+    if (Right.isOneOf(Keywords.kw_override, Keywords.kw_final,
+                      tok::kw_noexcept) &&
         !Right.is(TT_StartOfName)) {
       return true;
     }
