@@ -461,6 +461,8 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
     setMaxAtomicSizeInBitsSupported(0);
   }
 
+  setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Custom);
+
   setBooleanContents(ZeroOrOneBooleanContent);
 
   if (Subtarget.hasVInstructions()) {
@@ -3667,11 +3669,28 @@ static SDValue lowerConstant(SDValue Op, SelectionDAG &DAG,
   return SDValue();
 }
 
+static SDValue LowerATOMIC_FENCE(SDValue Op, SelectionDAG &DAG) {
+  SDLoc dl(Op);
+  SyncScope::ID FenceSSID =
+      static_cast<SyncScope::ID>(Op.getConstantOperandVal(2));
+
+  // singlethread fences only synchronize with signal handlers on the same
+  // thread and thus only need to preserve instruction order, not actually
+  // enforce memory ordering.
+  if (FenceSSID == SyncScope::SingleThread)
+    // MEMBARRIER is a compiler barrier; it codegens to a no-op.
+    return DAG.getNode(ISD::MEMBARRIER, dl, MVT::Other, Op.getOperand(0));
+
+  return Op;
+}
+
 SDValue RISCVTargetLowering::LowerOperation(SDValue Op,
                                             SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   default:
     report_fatal_error("unimplemented operand");
+  case ISD::ATOMIC_FENCE:
+    return LowerATOMIC_FENCE(Op, DAG);
   case ISD::GlobalAddress:
     return lowerGlobalAddress(Op, DAG);
   case ISD::BlockAddress:
@@ -9416,8 +9435,6 @@ combineBinOp_VLToVWBinOp_VL(SDNode *N, TargetLowering::DAGCombinerInfo &DCI) {
         }
       }
     };
-    AppendUsersIfNeeded(LHS);
-    AppendUsersIfNeeded(RHS);
 
     // Control the compile time by limiting the number of node we look at in
     // total.
@@ -9439,6 +9456,13 @@ combineBinOp_VLToVWBinOp_VL(SDNode *N, TargetLowering::DAGCombinerInfo &DCI) {
         if (Res) {
           Matched = true;
           CombinesToApply.push_back(*Res);
+          // All the inputs that are extended need to be folded, otherwise
+          // we would be leaving the old input (since it is may still be used),
+          // and the new one.
+          if (Res->SExtLHS.has_value())
+            AppendUsersIfNeeded(LHS);
+          if (Res->SExtRHS.has_value())
+            AppendUsersIfNeeded(RHS);
           break;
         }
       }

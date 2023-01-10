@@ -542,13 +542,9 @@ define i32 @local_alloca_simplifiable_3() {
 ; CHECK: Function Attrs: nofree norecurse nosync nounwind willreturn memory(none)
 ; CHECK-LABEL: define {{[^@]+}}@local_alloca_simplifiable_3
 ; CHECK-SAME: () #[[ATTR4:[0-9]+]] {
-; CHECK-NEXT:    [[A:%.*]] = alloca i32, align 4
-; CHECK-NEXT:    store i32 1, i32* [[A]], align 4
 ; CHECK-NEXT:    br label [[SPLIT:%.*]]
 ; CHECK:       split:
-; CHECK-NEXT:    store i32 2, i32* [[A]], align 4
-; CHECK-NEXT:    [[L:%.*]] = load i32, i32* [[A]], align 4
-; CHECK-NEXT:    ret i32 [[L]]
+; CHECK-NEXT:    ret i32 2
 ;
   %A = alloca i32, align 4
   store i32 1, i32* %A
@@ -2750,14 +2746,13 @@ define dso_local void @test_nested_memory(float* %dst, double* %src) {
 ; CGSCC-SAME: (float* nofree [[DST:%.*]], double* nofree [[SRC:%.*]]) {
 ; CGSCC-NEXT:  entry:
 ; CGSCC-NEXT:    [[LOCAL:%.*]] = alloca [[STRUCT_STY:%.*]], align 8
-; CGSCC-NEXT:    [[TMP0:%.*]] = bitcast %struct.STy* [[LOCAL]] to i8*
 ; CGSCC-NEXT:    [[INNER:%.*]] = getelementptr inbounds [[STRUCT_STY]], %struct.STy* [[LOCAL]], i64 0, i32 2
 ; CGSCC-NEXT:    [[CALL:%.*]] = call noalias dereferenceable_or_null(24) i8* @malloc(i64 noundef 24)
 ; CGSCC-NEXT:    [[DST1:%.*]] = bitcast i8* [[CALL]] to float**
 ; CGSCC-NEXT:    store float* [[DST]], float** [[DST1]], align 8
 ; CGSCC-NEXT:    [[SRC2:%.*]] = getelementptr inbounds i8, i8* [[CALL]], i64 8
-; CGSCC-NEXT:    [[TMP1:%.*]] = bitcast i8* [[SRC2]] to double**
-; CGSCC-NEXT:    store double* [[SRC]], double** [[TMP1]], align 8
+; CGSCC-NEXT:    [[TMP0:%.*]] = bitcast i8* [[SRC2]] to double**
+; CGSCC-NEXT:    store double* [[SRC]], double** [[TMP0]], align 8
 ; CGSCC-NEXT:    store i8* [[CALL]], i8** bitcast (%struct.STy** getelementptr inbounds ([[STRUCT_STY]], %struct.STy* @global, i64 0, i32 2) to i8**), align 8
 ; CGSCC-NEXT:    call fastcc void @nested_memory_callee(float* nofree nonnull align 4294967296 undef, double* nofree nonnull align 4294967296 undef, %struct.STy* nofree noundef nonnull align 8 dereferenceable(24) @global) #[[ATTR23:[0-9]+]]
 ; CGSCC-NEXT:    ret void
