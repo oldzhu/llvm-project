@@ -1842,7 +1842,7 @@ static void salvageDbgAssignAddress(DbgAssignIntrinsic *DAI) {
     DAI->setAddress(NewV);
     DAI->setAddressExpression(SalvagedExpr);
   } else {
-    DAI->setAddress(UndefValue::get(I->getType()));
+    DAI->setKillAddress();
   }
 }
 
@@ -2557,11 +2557,14 @@ static bool markAliveBlocks(Function &F,
   return Changed;
 }
 
-void llvm::removeUnwindEdge(BasicBlock *BB, DomTreeUpdater *DTU) {
+void llvm::removeUnwindEdge(BasicBlock *BB, bool WouldUnwindBeUB,
+                            DomTreeUpdater *DTU) {
   Instruction *TI = BB->getTerminator();
 
   if (auto *II = dyn_cast<InvokeInst>(TI)) {
-    changeToCall(II, DTU);
+    CallInst *CI = changeToCall(II, DTU);
+    if (WouldUnwindBeUB && !CI->doesNotThrow())
+      CI->setDoesNotThrow();
     return;
   }
 
