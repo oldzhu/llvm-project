@@ -2557,16 +2557,11 @@ static bool markAliveBlocks(Function &F,
   return Changed;
 }
 
-void llvm::removeUnwindEdge(BasicBlock *BB, bool WouldUnwindBeUB,
-                            DomTreeUpdater *DTU) {
+Instruction *llvm::removeUnwindEdge(BasicBlock *BB, DomTreeUpdater *DTU) {
   Instruction *TI = BB->getTerminator();
 
-  if (auto *II = dyn_cast<InvokeInst>(TI)) {
-    CallInst *CI = changeToCall(II, DTU);
-    if (WouldUnwindBeUB && !CI->doesNotThrow())
-      CI->setDoesNotThrow();
-    return;
-  }
+  if (auto *II = dyn_cast<InvokeInst>(TI))
+    return changeToCall(II, DTU);
 
   Instruction *NewTI;
   BasicBlock *UnwindDest;
@@ -2594,6 +2589,7 @@ void llvm::removeUnwindEdge(BasicBlock *BB, bool WouldUnwindBeUB,
   TI->eraseFromParent();
   if (DTU)
     DTU->applyUpdates({{DominatorTree::Delete, BB, UnwindDest}});
+  return NewTI;
 }
 
 /// removeUnreachableBlocks - Remove blocks that are not reachable, even
