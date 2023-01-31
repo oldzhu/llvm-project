@@ -163,13 +163,8 @@ foreach(entrypoint IN LISTS TARGET_LLVMLIBC_ENTRYPOINTS)
   list(APPEND TARGET_ENTRYPOINT_NAME_LIST ${entrypoint_name})
 endforeach()
 
-set(LIBC_TARGET)
-set(LIBC_COMPONENT)
 set(LIBC_INSTALL_DEPENDS)
-set(LIBC_INSTALL_TARGET)
 if(LLVM_LIBC_FULL_BUILD)
-  set(LIBC_TARGET libc)
-  set(LIBC_COMPONENT libc)
   set(LIBC_INSTALL_DEPENDS "install-libc-static-archives;install-libc-headers")
   if(NOT LIBC_TARGET_OS_IS_BAREMETAL)
     # For now we will disable libc-startup installation for baremetal. The
@@ -177,18 +172,8 @@ if(LLVM_LIBC_FULL_BUILD)
     # and install it as part of the libc installation.
     list(APPEND LIBC_INSTALL_DEPENDS "libc-startup")
   endif()
-  set(LIBC_INSTALL_TARGET install-libc)
-  if(LIBC_TARGET_ARCHITECTURE_IS_GPU)
-    set(LIBC_ARCHIVE_NAME cgpu)
-  else()
-    set(LIBC_ARCHIVE_NAME c)
-  endif()
 else()
-  set(LIBC_TARGET llvmlibc)
-  set(LIBC_COMPONENT llvmlibc)
   set(LIBC_INSTALL_DEPENDS install-libc-static-archives)
-  set(LIBC_INSTALL_TARGET install-llvmlibc)
-  set(LIBC_ARCHIVE_NAME llvmlibc)
 endif()
 
 add_subdirectory(include)
@@ -230,7 +215,7 @@ if(LLVM_LIBC_FULL_BUILD)
 endif()
 
 add_llvm_install_targets(
-  ${LIBC_INSTALL_TARGET}
+  install-libc
   DEPENDS ${LIBC_INSTALL_DEPENDS}
-  COMPONENT ${LIBC_COMPONENT}
+  COMPONENT libc
 )

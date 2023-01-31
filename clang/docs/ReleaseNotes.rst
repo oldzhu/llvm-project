@@ -63,6 +63,9 @@ Bug Fixes
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- We now generate a diagnostic for signed integer overflow due to unary minus
+  in a non-constant expression context. This fixes
+  `Issue 31643 <https://github.com/llvm/llvm-project/issues/31643>`_
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -85,6 +88,11 @@ New Pragmas in Clang
 
 Attribute Changes in Clang
 --------------------------
+
+Introduced a new function attribute ``__attribute__((unsafe_buffer_usage))``
+to be worn by functions containing buffer operations that could cause out of
+bounds memory accesses. It emits warnings at call sites to such functions when
+the flag ``-Wunsafe-buffer-usage`` is enabled.
 
 Windows Support
 ---------------
@@ -109,6 +117,11 @@ C++20 Feature Support
 
 C++2b Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
+
+- Implemented `P2036R3: Change scope of lambda trailing-return-type <https://wg21.link/P2036R3>`_
+  and `P2579R0 Mitigation strategies for P2036 <https://wg21.link/P2579R0>`_.
+  These proposals modify how variables captured in lambdas can appear in trailing return type
+  expressions and how their types are deduced therein, in all C++ language versions.
 
 CUDA/HIP Language Changes in Clang
 ----------------------------------
