@@ -1,4 +1,4 @@
-//===----------------------------------------------------------------------===//
+//===-- Unittests for scalbnl ---------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,10 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: c++03
+#include "ScalbnTest.h"
 
-// The "hash_value" function is tested as part of [path.compare]
-// in class.path/path.members/path.compare.pass.cpp
-int main(int, char**) {
-  return 0;
-}
+#include "src/math/scalbnl.h"
+
+LIST_SCALBN_TESTS(long double, __llvm_libc::scalbnl)

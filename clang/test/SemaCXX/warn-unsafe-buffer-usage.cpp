@@ -83,7 +83,7 @@ void testArraySubscriptsWithAuto(int *p, int **pp) {
   auto ap1 = a;   // expected-warning{{'ap1' is an unsafe pointer used for buffer access}} \
 		     expected-note{{change type of 'ap1' to 'std::span' to preserve bounds information}}
 
-  foo(ap1[1]);    // expected-note{{used in buffer access here}} 
+  foo(ap1[1]);    // expected-note{{used in buffer access here}}
 
   auto ap2 = p;   // expected-warning{{'ap2' is an unsafe pointer used for buffer access}} \
   		     expected-note{{change type of 'ap2' to 'std::span' to preserve bounds information}}

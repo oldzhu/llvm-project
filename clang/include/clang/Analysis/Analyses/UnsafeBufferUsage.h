@@ -38,6 +38,9 @@ public:
   virtual void handleFixableVariable(const VarDecl *Variable,
                                      FixItList &&List) = 0;
 
+  /// Returns a reference to the `Preprocessor`:
+  virtual bool isSafeBufferOptOut(const SourceLocation &Loc) const = 0;
+
   /// Returns the text indicating that the user needs to provide input there:
   virtual std::string
   getUserFillPlaceHolder(StringRef HintTextToUser = "placeholder") {
@@ -52,6 +55,12 @@ public:
 // through the handler class.
 void checkUnsafeBufferUsage(const Decl *D, UnsafeBufferUsageHandler &Handler);
 
+namespace internal {
+// Tests if any two `FixItHint`s in `FixIts` conflict.  Two `FixItHint`s
+// conflict if they have overlapping source ranges.
+bool anyConflict(const llvm::SmallVectorImpl<FixItHint> &FixIts,
+                 const SourceManager &SM);
+} // namespace internal
 } // end namespace clang
 
 #endif /* LLVM_CLANG_ANALYSIS_ANALYSES_UNSAFEBUFFERUSAGE_H */

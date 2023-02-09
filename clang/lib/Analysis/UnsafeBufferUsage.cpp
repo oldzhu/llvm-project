@@ -9,6 +9,7 @@
 #include "clang/Analysis/Analyses/UnsafeBufferUsage.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/Lexer.h"
 #include "llvm/ADT/SmallVector.h"
 #include <memory>
@@ -115,6 +116,11 @@ AST_MATCHER_P(Stmt, forEveryDescendant, internal::Matcher<Stmt>, innerMatcher) {
   
   MatchDescendantVisitor Visitor(&DTM, Finder, Builder, ASTMatchFinder::BK_All);  
   return Visitor.findMatch(DynTypedNode::create(Node));
+}
+
+// Matches a `Stmt` node iff the node is in a safe-buffer opt-out region
+AST_MATCHER_P(Stmt, notInSafeBufferOptOut, const UnsafeBufferUsageHandler *, Handler) {
+  return !Handler->isSafeBufferOptOut(Node.getBeginLoc());
 }
 
 AST_MATCHER_P(CastExpr, castSubExpr, internal::Matcher<Expr>, innerMatcher) {
@@ -548,7 +554,8 @@ public:
 } // namespace
 
 /// Scan the function and return a list of gadgets found with provided kits.
-static std::tuple<FixableGadgetList, WarningGadgetList, DeclUseTracker> findGadgets(const Decl *D) {
+static std::tuple<FixableGadgetList, WarningGadgetList, DeclUseTracker>
+findGadgets(const Decl *D, const UnsafeBufferUsageHandler &Handler) {
 
   struct GadgetFinderCallback : MatchFinder::MatchCallback {
     FixableGadgetList FixableGadgets;
@@ -620,7 +627,7 @@ static std::tuple<FixableGadgetList, WarningGadgetList, DeclUseTracker> findGadg
       stmt(anyOf(
         // Add Gadget::matcher() for every gadget in the registry.
 #define WARNING_GADGET(x)                                                              \
-        x ## Gadget::matcher().bind(#x),
+        allOf(x ## Gadget::matcher().bind(#x), notInSafeBufferOptOut(&Handler)),
 #include "clang/Analysis/Analyses/UnsafeBufferUsageGadgets.def"
         // In parallel, match all DeclRefExprs so that to find out
         // whether there are any uncovered by gadgets.
@@ -692,6 +699,37 @@ groupFixablesByVar(FixableGadgetList &&AllFixableOperations) {
     }
   }
   return FixablesForUnsafeVars;
+}
+
+bool clang::internal::anyConflict(
+    const SmallVectorImpl<FixItHint> &FixIts, const SourceManager &SM) {
+  // A simple interval overlap detection algorithm.  Sorts all ranges by their
+  // begin location then finds the first overlap in one pass.
+  std::vector<const FixItHint *> All; // a copy of `FixIts`
+
+  for (const FixItHint &H : FixIts)
+    All.push_back(&H);
+  std::sort(All.begin(), All.end(),
+            [&SM](const FixItHint *H1, const FixItHint *H2) {
+              return SM.isBeforeInTranslationUnit(H1->RemoveRange.getBegin(),
+                                                  H2->RemoveRange.getBegin());
+            });
+
+  const FixItHint *CurrHint = nullptr;
+
+  for (const FixItHint *Hint : All) {
+    if (!CurrHint ||
+        SM.isBeforeInTranslationUnit(CurrHint->RemoveRange.getEnd(),
+                                     Hint->RemoveRange.getBegin())) {
+      // Either to initialize `CurrHint` or `CurrHint` does not
+      // overlap with `Hint`:
+      CurrHint = Hint;
+    } else
+      // In case `Hint` overlaps the `CurrHint`, we found at least one
+      // conflict:
+      return true;
+  }
+  return false;
 }
 
 std::optional<FixItList>
@@ -900,6 +938,7 @@ static FixItList fixVariable(const VarDecl *VD, Strategy::Kind K,
   case Strategy::Kind::Wontfix:
     llvm_unreachable("Invalid strategy!");
   }
+  llvm_unreachable("Unknown strategy!");
 }
 
 // Returns true iff there exists a `FixItHint` 'h' in `FixIts` such that the
@@ -947,8 +986,12 @@ getFixIts(FixableGadgetSets &FixablesForUnsafeVars, const Strategy &S,
     else
       FixItsForVariable[VD].insert(FixItsForVariable[VD].end(),
                                    FixItsForVD.begin(), FixItsForVD.end());
-    // Fix-it shall not overlap with macros or/and templates:
-    if (overlapWithMacro(FixItsForVariable[VD])) {
+    // We conservatively discard fix-its of a variable if
+    // a fix-it overlaps with macros; or
+    // a fix-it conflicts with another one
+    if (overlapWithMacro(FixItsForVariable[VD]) ||
+        clang::internal::anyConflict(FixItsForVariable[VD],
+                                     Ctx.getSourceManager())) {      
       FixItsForVariable.erase(VD);
     }
   }
@@ -973,7 +1016,7 @@ void clang::checkUnsafeBufferUsage(const Decl *D,
   DeclUseTracker Tracker;
 
   {
-    auto [FixableGadgets, WarningGadgets, TrackerRes] = findGadgets(D);
+    auto [FixableGadgets, WarningGadgets, TrackerRes] = findGadgets(D, Handler);
     UnsafeOps = groupWarningGadgetsByVar(std::move(WarningGadgets));
     FixablesForUnsafeVars = groupFixablesByVar(std::move(FixableGadgets));
     Tracker = std::move(TrackerRes);
