@@ -131,6 +131,14 @@ def HasStdExtZhinxOrZhinxmin
                                    "'Zhinx' (Half Float in Integer) or "
                                    "'Zhinxmin' (Half Float in Integer Minimal)">;
 
+def FeatureStdExtZfa
+    : SubtargetFeature<"experimental-zfa", "HasStdExtZfa", "true",
+                       "'Zfa' (Additional Floating-Point)",
+                       [FeatureStdExtF]>;
+def HasStdExtZfa : Predicate<"Subtarget->hasStdExtZfa()">,
+                             AssemblerPredicate<(all_of FeatureStdExtZfa),
+                             "'Zfa' (Additional Floating-Point)">;
+                             
 def FeatureStdExtC
     : SubtargetFeature<"c", "HasStdExtC", "true",
                        "'C' (Compressed Instructions)">;
@@ -483,6 +491,13 @@ def FeatureVendorXTHeadBs
 def HasVendorXTHeadBs : Predicate<"Subtarget->hasVendorXTHeadBs()">,
                                   AssemblerPredicate<(all_of FeatureVendorXTHeadBs),
                                   "'xtheadbs' (T-Head single-bit instructions)">;
+
+def FeatureVendorXTHeadMac
+    : SubtargetFeature<"xtheadmac", "HasVendorXTHeadMac", "true",
+                       "'xtheadmac' (T-Head Multiply-Accumulate Instructions)">;
+def HasVendorXTHeadMac : Predicate<"Subtarget->hasVendorXTHeadMac()">,
+                                   AssemblerPredicate<(all_of FeatureVendorXTHeadMac),
+                                   "'xtheadmac' (T-Head Multiply-Accumulate Instructions)">;
 
 def FeatureVendorXTHeadVdot
     : SubtargetFeature<"xtheadvdot", "HasVendorXTHeadVdot", "true",
