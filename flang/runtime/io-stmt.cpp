@@ -70,6 +70,8 @@ bool IoStatementBase::Inquire(InquiryKeywordHash, std::int64_t &) {
   return false;
 }
 
+std::int64_t IoStatementBase::InquirePos() { return 0; }
+
 void IoStatementBase::BadInquiryKeywordHashCrash(InquiryKeywordHash inquiry) {
   char buffer[16];
   const char *decode{InquiryKeywordHashDecode(buffer, sizeof buffer, inquiry)};
@@ -135,6 +137,11 @@ void InternalIoStatementState<DIR>::HandleAbsolutePosition(std::int64_t n) {
 template <Direction DIR>
 void InternalIoStatementState<DIR>::HandleRelativePosition(std::int64_t n) {
   return unit_.HandleRelativePosition(n);
+}
+
+template <Direction DIR>
+std::int64_t InternalIoStatementState<DIR>::InquirePos() {
+  return unit_.InquirePos();
 }
 
 template <Direction DIR, typename CHAR>
@@ -204,6 +211,10 @@ int ExternalIoStatementBase::EndIoStatement() {
 
 void ExternalIoStatementBase::SetAsynchronous() {
   asynchronousID_ = unit().GetAsynchronousId(*this);
+}
+
+std::int64_t ExternalIoStatementBase::InquirePos() {
+  return unit_.InquirePos();
 }
 
 void OpenStatementState::set_path(const char *path, std::size_t length) {
@@ -635,6 +646,10 @@ bool IoStatementState::Inquire(InquiryKeywordHash inquiry, std::int64_t &n) {
       [&](auto &x) { return x.get().Inquire(inquiry, n); }, u_);
 }
 
+std::int64_t IoStatementState::InquirePos() {
+  return common::visit([&](auto &x) { return x.get().InquirePos(); }, u_);
+}
+
 void IoStatementState::GotChar(int n) {
   if (auto *formattedIn{
           get_if<FormattedIoStatementState<Direction::Input>>()}) {
@@ -823,10 +838,6 @@ ExternalFileUnit *ChildIoStatementState<DIR>::GetExternalFileUnit() const {
   return child_.parent().GetExternalFileUnit();
 }
 
-template <Direction DIR> void ChildIoStatementState<DIR>::CompleteOperation() {
-  IoStatementBase::CompleteOperation();
-}
-
 template <Direction DIR> int ChildIoStatementState<DIR>::EndIoStatement() {
   CompleteOperation();
   auto result{IoStatementBase::EndIoStatement()};
@@ -879,8 +890,8 @@ int ChildFormattedIoStatementState<DIR, CHAR>::EndIoStatement() {
 }
 
 template <Direction DIR, typename CHAR>
-bool ChildFormattedIoStatementState<DIR, CHAR>::AdvanceRecord(int) {
-  return false; // no can do in a child I/O
+bool ChildFormattedIoStatementState<DIR, CHAR>::AdvanceRecord(int n) {
+  return this->child().parent().AdvanceRecord(n);
 }
 
 template <Direction DIR>
