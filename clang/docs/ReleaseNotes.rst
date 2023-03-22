@@ -219,6 +219,12 @@ Bug Fixes in This Version
 - Fix crash when using ``[[clang::always_inline]]`` or ``[[clang::noinline]]``
   statement attributes on a call to a template function in the body of a
   template function.
+- Fix coroutines issue where ``get_return_object()`` result was always eargerly
+  converted to the return type. Eager initialization (allowing RVO) is now only
+  perfomed when these types match, otherwise deferred initialization is used,
+  enabling short-circuiting coroutines use cases. This fixes
+  (`#56532 <https://github.com/llvm/llvm-project/issues/56532>`_) in
+  antecipation of `CWG2563 <https://cplusplus.github.io/CWG/issues/2563.html>_`.
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -362,6 +368,14 @@ libclang
   has an evaluable bit width. Fixes undefined behavior when called on a
   bit-field whose width depends on a template paramter.
 
+- ``clang_parseTranslationUnit`` and ``clang_parseTranslationUnit2`` have been
+  changed to automatically locate the Clang installation directory relative to
+  the location of the libclang binary and use it for system headers installed
+  alongside the Clang installation. It is no longer necessary to manually
+  locate such system headers or use the ``clang_parseTranslationUnit2FullArgv``
+  function for this purpose if libclang has been installed in the default
+  location.
+ 
 Static Analyzer
 ---------------
 - Fix incorrect alignment attribute on the this parameter of certain
