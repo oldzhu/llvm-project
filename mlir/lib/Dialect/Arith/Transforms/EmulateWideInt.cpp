@@ -16,6 +16,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include <cassert>
@@ -42,7 +43,7 @@ static std::pair<APInt, APInt> getHalves(const APInt &value,
   return {std::move(low), std::move(high)};
 }
 
-/// Returns the type with the last (innermost) dimention reduced to x1.
+/// Returns the type with the last (innermost) dimension reduced to x1.
 /// Scalarizes 1D vector inputs to match how we extract/insert vector values,
 /// e.g.:
 ///   - vector<3x2xi16> --> vector<3x1xi16>
@@ -127,7 +128,7 @@ static Value dropTrailingX1Dim(ConversionPatternRewriter &rewriter,
   if (!vecTy)
     return input;
 
-  // Shape cast to drop the last x1 dimention.
+  // Shape cast to drop the last x1 dimension.
   ArrayRef<int64_t> shape = vecTy.getShape();
   assert(shape.size() >= 2 && "Expected vector with at list two dims");
   assert(shape.back() == 1 && "Expected the last vector dim to be x1");
@@ -176,13 +177,13 @@ static Value insertLastDimSlice(ConversionPatternRewriter &rewriter,
 /// dimension.
 /// When all `resultComponents` are scalars, the result type is `vector<NxT>`;
 /// when `resultComponents` are `vector<...x1xT>`s, the result type is
-/// `vector<...xNxT>`, where `N` is the number of `resultComponenets`.
+/// `vector<...xNxT>`, where `N` is the number of `resultComponents`.
 static Value constructResultVector(ConversionPatternRewriter &rewriter,
                                    Location loc, VectorType resultType,
                                    ValueRange resultComponents) {
   llvm::ArrayRef<int64_t> resultShape = resultType.getShape();
   (void)resultShape;
-  assert(!resultShape.empty() && "Result expected to have dimentions");
+  assert(!resultShape.empty() && "Result expected to have dimensions");
   assert(resultShape.back() == static_cast<int64_t>(resultComponents.size()) &&
          "Wrong number of result components");
 
@@ -908,6 +909,52 @@ struct ConvertShRSI final : OpConversionPattern<arith::ShRSIOp> {
 };
 
 //===----------------------------------------------------------------------===//
+// ConvertSIToFP
+//===----------------------------------------------------------------------===//
+
+struct ConvertSIToFP final : OpConversionPattern<arith::SIToFPOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::SIToFPOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    Value in = op.getIn();
+    Type oldTy = in.getType();
+    auto newTy =
+        dyn_cast_or_null<VectorType>(getTypeConverter()->convertType(oldTy));
+    if (!newTy)
+      return rewriter.notifyMatchFailure(
+          loc, llvm::formatv("unsupported type: {0}", oldTy));
+
+    unsigned oldBitWidth = getElementTypeOrSelf(oldTy).getIntOrFloatBitWidth();
+    Value zeroCst = createScalarOrSplatConstant(rewriter, loc, oldTy, 0);
+    Value oneCst = createScalarOrSplatConstant(rewriter, loc, oldTy, 1);
+    Value allOnesCst = createScalarOrSplatConstant(
+        rewriter, loc, oldTy, APInt::getAllOnes(oldBitWidth));
+
+    // To avoid operating on very large unsigned numbers, perform the
+    // conversion on the absolute value. Then, decide whether to negate the
+    // result or not based on that sign bit. We assume two's complement and
+    // implement negation by flipping all bits and adding 1.
+    // Note that this relies on the the other conversion patterns to legalize
+    // created ops and narrow the bit widths.
+    Value isNeg = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt,
+                                                 in, zeroCst);
+    Value bitwiseNeg = rewriter.create<arith::XOrIOp>(loc, in, allOnesCst);
+    Value neg = rewriter.create<arith::AddIOp>(loc, bitwiseNeg, oneCst);
+    Value abs = rewriter.create<arith::SelectOp>(loc, isNeg, neg, in);
+
+    Value absResult = rewriter.create<arith::UIToFPOp>(loc, op.getType(), abs);
+    Value negResult = rewriter.create<arith::NegFOp>(loc, absResult);
+    rewriter.replaceOpWithNewOp<arith::SelectOp>(op, isNeg, negResult,
+                                                 absResult);
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // ConvertUIToFP
 //===----------------------------------------------------------------------===//
 
@@ -1146,5 +1193,5 @@ void arith::populateArithWideIntEmulationPatterns(
       ConvertIndexCastIntToIndex<arith::IndexCastUIOp>,
       ConvertIndexCastIndexToInt<arith::IndexCastOp, arith::ExtSIOp>,
       ConvertIndexCastIndexToInt<arith::IndexCastUIOp, arith::ExtUIOp>,
-      ConvertUIToFP>(typeConverter, patterns.getContext());
+      ConvertSIToFP, ConvertUIToFP>(typeConverter, patterns.getContext());
 }
