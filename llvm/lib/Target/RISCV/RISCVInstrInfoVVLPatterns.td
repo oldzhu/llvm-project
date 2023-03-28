@@ -111,6 +111,7 @@ def riscv_strict_fadd_vl  : SDNode<"RISCVISD::STRICT_FADD_VL",  SDT_RISCVFPBinOp
 def riscv_strict_fsub_vl  : SDNode<"RISCVISD::STRICT_FSUB_VL",  SDT_RISCVFPBinOp_VL, [SDNPHasChain]>;
 def riscv_strict_fmul_vl  : SDNode<"RISCVISD::STRICT_FMUL_VL",  SDT_RISCVFPBinOp_VL, [SDNPCommutative, SDNPHasChain]>;
 def riscv_strict_fdiv_vl  : SDNode<"RISCVISD::STRICT_FDIV_VL",  SDT_RISCVFPBinOp_VL, [SDNPHasChain]>;
+def riscv_strict_fsqrt_vl : SDNode<"RISCVISD::STRICT_FSQRT_VL", SDT_RISCVFPUnOp_VL, [SDNPHasChain]>;
 
 def any_riscv_fadd_vl : PatFrags<(ops node:$lhs, node:$rhs, node:$merge, node:$mask, node:$vl),
                         [(riscv_fadd_vl node:$lhs, node:$rhs, node:$merge, node:$mask, node:$vl),
@@ -124,6 +125,9 @@ def any_riscv_fmul_vl : PatFrags<(ops node:$lhs, node:$rhs, node:$merge, node:$m
 def any_riscv_fdiv_vl : PatFrags<(ops node:$lhs, node:$rhs, node:$merge, node:$mask, node:$vl),
                         [(riscv_fdiv_vl node:$lhs, node:$rhs, node:$merge, node:$mask, node:$vl),
                          (riscv_strict_fdiv_vl node:$lhs, node:$rhs, node:$merge, node:$mask, node:$vl)]>;
+def any_riscv_fsqrt_vl : PatFrags<(ops node:$src, node:$mask, node:$vl),
+                        [(riscv_fsqrt_vl node:$src, node:$mask, node:$vl),
+                         (riscv_strict_fsqrt_vl node:$src, node:$mask, node:$vl)]>;
 
 def SDT_RISCVVecFMA_VL : SDTypeProfile<1, 5, [SDTCisSameAs<0, 1>,
                                               SDTCisSameAs<0, 2>,
@@ -136,6 +140,24 @@ def riscv_vfmadd_vl : SDNode<"RISCVISD::VFMADD_VL", SDT_RISCVVecFMA_VL, [SDNPCom
 def riscv_vfnmadd_vl : SDNode<"RISCVISD::VFNMADD_VL", SDT_RISCVVecFMA_VL, [SDNPCommutative]>;
 def riscv_vfmsub_vl : SDNode<"RISCVISD::VFMSUB_VL", SDT_RISCVVecFMA_VL, [SDNPCommutative]>;
 def riscv_vfnmsub_vl : SDNode<"RISCVISD::VFNMSUB_VL", SDT_RISCVVecFMA_VL, [SDNPCommutative]>;
+
+def riscv_strict_vfmadd_vl : SDNode<"RISCVISD::STRICT_VFMADD_VL", SDT_RISCVVecFMA_VL, [SDNPCommutative, SDNPHasChain]>;
+def riscv_strict_vfnmadd_vl : SDNode<"RISCVISD::STRICT_VFNMADD_VL", SDT_RISCVVecFMA_VL, [SDNPCommutative, SDNPHasChain]>;
+def riscv_strict_vfmsub_vl : SDNode<"RISCVISD::STRICT_VFMSUB_VL", SDT_RISCVVecFMA_VL, [SDNPCommutative, SDNPHasChain]>;
+def riscv_strict_vfnmsub_vl : SDNode<"RISCVISD::STRICT_VFNMSUB_VL", SDT_RISCVVecFMA_VL, [SDNPCommutative, SDNPHasChain]>;
+
+def any_riscv_vfmadd_vl : PatFrags<(ops node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl),
+                        [(riscv_vfmadd_vl node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl),
+                         (riscv_strict_vfmadd_vl node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl)]>;
+def any_riscv_vfnmadd_vl : PatFrags<(ops node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl),
+                        [(riscv_vfnmadd_vl node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl),
+                         (riscv_strict_vfnmadd_vl node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl)]>;
+def any_riscv_vfmsub_vl : PatFrags<(ops node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl),
+                        [(riscv_vfmsub_vl node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl),
+                         (riscv_strict_vfmsub_vl node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl)]>;
+def any_riscv_vfnmsub_vl : PatFrags<(ops node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl),
+                        [(riscv_vfnmsub_vl node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl),
+                         (riscv_strict_vfnmsub_vl node:$rs1, node:$rs2, node:$rs3, node:$mask, node:$vl)]>;
 
 def SDT_RISCVFPRoundOp_VL  : SDTypeProfile<1, 3, [
   SDTCisFP<0>, SDTCisFP<1>, SDTCisOpSmallerThanOp<0, 1>, SDTCisSameNumEltsAs<0, 1>,
@@ -1391,7 +1413,7 @@ multiclass VPatNarrowShiftSplat_WX_WI<SDNode op, string instruction_name> {
   }
 }
 
-multiclass VPatFPMulAddVL_VV_VF<SDNode vop, string instruction_name> {
+multiclass VPatFPMulAddVL_VV_VF<SDPatternOperator vop, string instruction_name> {
   foreach vti = AllFloatVectors in {
   defvar suffix = vti.LMul.MX;
   def : Pat<(vti.Vector (vop vti.RegClass:$rs1, vti.RegClass:$rd,
@@ -1779,10 +1801,10 @@ defm : VPatBinaryFPVL_R_VF_E<any_riscv_fdiv_vl, "PseudoVFRDIV">;
 defm : VPatWidenBinaryFPVL_VV_VF<riscv_fmul_vl, riscv_fpextend_vl_oneuse, "PseudoVFWMUL">;
 
 // 13.6 Vector Single-Width Floating-Point Fused Multiply-Add Instructions.
-defm : VPatFPMulAddVL_VV_VF<riscv_vfmadd_vl,  "PseudoVFMADD">;
-defm : VPatFPMulAddVL_VV_VF<riscv_vfmsub_vl,  "PseudoVFMSUB">;
-defm : VPatFPMulAddVL_VV_VF<riscv_vfnmadd_vl, "PseudoVFNMADD">;
-defm : VPatFPMulAddVL_VV_VF<riscv_vfnmsub_vl, "PseudoVFNMSUB">;
+defm : VPatFPMulAddVL_VV_VF<any_riscv_vfmadd_vl,  "PseudoVFMADD">;
+defm : VPatFPMulAddVL_VV_VF<any_riscv_vfmsub_vl,  "PseudoVFMSUB">;
+defm : VPatFPMulAddVL_VV_VF<any_riscv_vfnmadd_vl, "PseudoVFNMADD">;
+defm : VPatFPMulAddVL_VV_VF<any_riscv_vfnmsub_vl, "PseudoVFNMSUB">;
 defm : VPatFPMulAccVL_VV_VF<riscv_vfmadd_vl_oneuse,  "PseudoVFMACC">;
 defm : VPatFPMulAccVL_VV_VF<riscv_vfmsub_vl_oneuse,  "PseudoVFMSAC">;
 defm : VPatFPMulAccVL_VV_VF<riscv_vfnmadd_vl_oneuse, "PseudoVFNMACC">;
@@ -1813,7 +1835,7 @@ defm : VPatFPSetCCVL_VV_VF_FV<SETOLE, "PseudoVMFLE", "PseudoVMFGE">;
 
 foreach vti = AllFloatVectors in {
   // 13.8. Vector Floating-Point Square-Root Instruction
-  def : Pat<(riscv_fsqrt_vl (vti.Vector vti.RegClass:$rs2), (vti.Mask V0),
+  def : Pat<(any_riscv_fsqrt_vl (vti.Vector vti.RegClass:$rs2), (vti.Mask V0),
                             VLOpFrag),
             (!cast<Instruction>("PseudoVFSQRT_V_"# vti.LMul.MX # "_E" # vti.SEW # "_MASK")
                  (vti.Vector (IMPLICIT_DEF)), vti.RegClass:$rs2,
