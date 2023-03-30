@@ -154,9 +154,10 @@ void *__sanitizer_malloc(uptr size) {
 
 }  // extern "C"
 
-#define INTERCEPTOR_ALIAS(RET, FN, ARGS...)                                 \
-  extern "C" SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE RET FN( \
-      ARGS) ALIAS("__sanitizer_" #FN)
+#if HWASAN_WITH_INTERCEPTORS || SANITIZER_FUCHSIA
+#  define INTERCEPTOR_ALIAS(RET, FN, ARGS...)                                 \
+    extern "C" SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE RET FN( \
+        ARGS) ALIAS("__sanitizer_" #FN)
 
 INTERCEPTOR_ALIAS(int, posix_memalign, void **memptr, SIZE_T alignment,
                   SIZE_T size);
@@ -178,3 +179,4 @@ INTERCEPTOR_ALIAS(__sanitizer_struct_mallinfo, mallinfo);
 INTERCEPTOR_ALIAS(int, mallopt, int cmd, int value);
 INTERCEPTOR_ALIAS(void, malloc_stats, void);
 #  endif
+#endif  // #if HWASAN_WITH_INTERCEPTORS
