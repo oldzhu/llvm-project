@@ -98,6 +98,9 @@ Improvements to clang-tidy
   `ImplementationFileExtensions`, replacing the check-local options of the
   same name.
 
+- Support specifying `Checks` as a YAML list in the `.clang-tidy` configuration
+  file.
+
 New checks
 ^^^^^^^^^^
 
@@ -220,6 +223,10 @@ Changes in existing checks
   <clang-tidy/checks/misc/definitions-in-headers>` to avoid warning on
   declarations inside anonymous namespaces.
 
+- Improved :doc:`misc-unused-parameters
+  <clang-tidy/checks/misc/unused-parameters>` check with new `IgnoreVirtual`
+  option to optionally ignore virtual methods.
+
 - Deprecated check-local options `HeaderFileExtensions`
   in :doc:`misc-unused-using-decls
   <clang-tidy/checks/misc/unused-using-decls>` check.
@@ -302,8 +309,8 @@ Changes in existing checks
   ``DISABLED_`` in the test suite name.
 
 - Improved :doc:`modernize-concat-nested-namespaces
-  <clang-tidy/checks/modernize/concat-nested-namespaces>` to fix incorrect fixes when 
-  using macro between namespace declarations and false positive when using namespace 
+  <clang-tidy/checks/modernize/concat-nested-namespaces>` to fix incorrect fixes when
+  using macro between namespace declarations and false positive when using namespace
   with attributes.
 
 - Fixed a false positive in :doc:`performance-no-automatic-move
