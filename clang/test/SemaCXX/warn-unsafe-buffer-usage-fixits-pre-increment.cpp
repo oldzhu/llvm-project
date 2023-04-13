@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++20 -Wunsafe-buffer-usage -fdiagnostics-parseable-fixits %s 2>&1 | FileCheck %s
+// RUN: %clang_cc1 -triple=arm-apple -std=c++20 -Wunsafe-buffer-usage -fdiagnostics-parseable-fixits %s 2>&1 | FileCheck %s
 
 void foo(int * , int *);
 
@@ -9,8 +9,8 @@ void simple() {
   // CHECK-DAG: fix-it:"{{.*}}":{[[@LINE-3]]:24-[[@LINE-3]]:24}:", 10}"
   bool b = ++p;
   // CHECK: fix-it:"{{.*}}":{[[@LINE-1]]:12-[[@LINE-1]]:15}:"(p = p.subspan(1)).data()"
-  unsigned long n = (unsigned long) ++p;
-  // CHECK: fix-it:"{{.*}}":{[[@LINE-1]]:37-[[@LINE-1]]:40}:"(p = p.subspan(1)).data()"
+  unsigned long long n = (unsigned long long) ++p;
+  // CHECK: fix-it:"{{.*}}":{[[@LINE-1]]:47-[[@LINE-1]]:50}:"(p = p.subspan(1)).data()"
   if (++p) {
     // CHECK: fix-it:"{{.*}}":{[[@LINE-1]]:7-[[@LINE-1]]:10}:"(p = p.subspan(1)).data()"
   }
