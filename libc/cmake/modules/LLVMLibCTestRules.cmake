@@ -421,7 +421,7 @@ function(add_integration_test test_name)
     "INTEGRATION_TEST"
     "" # No optional arguments
     "SUITE" # Single value arguments
-    "SRCS;HDRS;DEPENDS;ARGS;ENV;COMPILE_OPTIONS" # Multi-value arguments
+    "SRCS;HDRS;DEPENDS;ARGS;ENV;COMPILE_OPTIONS;LOADER_ARGS" # Multi-value arguments
     ${ARGN}
   )
 
@@ -485,7 +485,7 @@ function(add_integration_test test_name)
     ${fq_build_target_name}
     EXCLUDE_FROM_ALL
     # The NVIDIA 'nvlink' linker does not currently support static libraries.
-    $<$<BOOL:${LIBC_TARGET_ARCHITECTURE_IS_GPU}>:${link_object_files}>
+    $<$<BOOL:${LIBC_GPU_TARGET_ARCHITECTURE_IS_NVPTX}>:${link_object_files}>
     ${INTEGRATION_TEST_SRCS}
     ${INTEGRATION_TEST_HDRS}
   )
@@ -529,11 +529,21 @@ function(add_integration_test test_name)
     get_target_property(gpu_loader_exe libc.utils.gpu.loader "EXECUTABLE")
   endif()
 
+  # We have to use a separate var to store the command as a list because
+  # the COMMAND option of `add_custom_target` cannot handle empty vars in the
+  # command. For example, if INTEGRATION_TEST_ENV is empty, the actual
+  # command also will not run. So, we use this list and tell `add_custom_target`
+  # to expand the list (by including the option COMMAND_EXPAND_LISTS). This
+  # makes `add_custom_target` construct the correct command and execute it.
+  set(test_cmd
+      ${INTEGRATION_TEST_ENV}
+      $<$<BOOL:${LIBC_TARGET_ARCHITECTURE_IS_GPU}>:${gpu_loader_exe}>
+      ${INTEGRATION_TEST_LOADER_ARGS}
+      $<TARGET_FILE:${fq_build_target_name}> ${INTEGRATION_TEST_ARGS})
   add_custom_target(
     ${fq_target_name}
-    COMMAND ${INTEGRATION_TEST_ENV}
-            $<$<BOOL:${LIBC_TARGET_ARCHITECTURE_IS_GPU}>:${gpu_loader_exe}>
-            $<TARGET_FILE:${fq_build_target_name}> ${INTEGRATION_TEST_ARGS}
+    COMMAND ${test_cmd}
+    COMMAND_EXPAND_LISTS
     COMMENT "Running integration test ${fq_target_name}"
   )
   add_dependencies(${INTEGRATION_TEST_SUITE} ${fq_target_name})
