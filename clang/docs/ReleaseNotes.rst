@@ -233,6 +233,8 @@ Improvements to Clang's diagnostics
 - ``-Wformat`` now recognizes ``%lb`` for the ``printf``/``scanf`` family of
   functions.
   (`#62247: <https://github.com/llvm/llvm-project/issues/62247>`_).
+- Clang now diagnoses shadowing of lambda's template parameter by a capture.
+  (`#61105: <https://github.com/llvm/llvm-project/issues/61105>`_).
 
 Bug Fixes in This Version
 -------------------------
@@ -430,6 +432,9 @@ Arm and AArch64 Support
      // int a = foo(); int* b = bar();
      asm("ands %w[a], %w[a], #3" : [a] "+r"(a), "=@cceq"(*b));
 
+- Fix a crash when ``preserve_all`` calling convention is used on AArch64.
+  `Issue 58145 <https://github.com/llvm/llvm-project/issues/58145>`_
+
 Windows Support
 ^^^^^^^^^^^^^^^
 
@@ -450,6 +455,9 @@ RISC-V Support
   FPR+FPR.
 - Removed support for ``__attribute__((interrupt("user")))``. User-level
   interrupts are not in version 1.12 of the privileged specification.
+- Added ``attribute(riscv_rvv_vector_bits(__riscv_v_fixed_vlen))`` to allow
+  the size of a RVV (RISC-V Vector) scalable type to be specified. This allows
+  RVV scalable vector types to be used in structs or in global variables.
 
 CUDA/HIP Language Changes
 ^^^^^^^^^^^^^^^^^^^^^^^^^

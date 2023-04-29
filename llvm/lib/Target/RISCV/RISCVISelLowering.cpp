@@ -9544,8 +9544,31 @@ static SDValue transformAddImmMulImm(SDNode *N, SelectionDAG &DAG,
   return DAG.getNode(ISD::ADD, DL, VT, New1, DAG.getConstant(CB, DL, VT));
 }
 
+// Try to turn (add (xor (setcc X, Y), 1) -1) into (neg (setcc X, Y)).
+static SDValue combineAddOfBooleanXor(SDNode *N, SelectionDAG &DAG) {
+  SDValue N0 = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+  EVT VT = N->getValueType(0);
+  SDLoc DL(N);
+
+  // RHS should be -1.
+  if (!isAllOnesConstant(N1))
+    return SDValue();
+
+  // Look for an (xor (setcc X, Y), 1).
+  if (N0.getOpcode() != ISD::XOR || !isOneConstant(N0.getOperand(1)) ||
+      N0.getOperand(0).getOpcode() != ISD::SETCC)
+    return SDValue();
+
+  // Emit a negate of the setcc.
+  return DAG.getNode(ISD::SUB, DL, VT, DAG.getConstant(0, DL, VT),
+                     N0.getOperand(0));
+}
+
 static SDValue performADDCombine(SDNode *N, SelectionDAG &DAG,
                                  const RISCVSubtarget &Subtarget) {
+  if (SDValue V = combineAddOfBooleanXor(N, DAG))
+    return V;
   if (SDValue V = transformAddImmMulImm(N, DAG, Subtarget))
     return V;
   if (SDValue V = transformAddShlImm(N, DAG, Subtarget))
@@ -9784,7 +9807,7 @@ public:
   // Returns differ operand.
   SDValue const &getDOp() const { return operator[](DifferPos); }
 
-  // Returns consition code of comparison operation.
+  // Returns condition code of comparison operation.
   ISD::CondCode getCondCode() const { return CCode; }
 };
 } // namespace
@@ -11426,6 +11449,11 @@ static SDValue performCONCAT_VECTORSCombine(SDNode *N, SelectionDAG &DAG,
   if (!TLI.isTypeLegal(WideVecVT))
     return SDValue();
 
+  // Check that the operation is legal
+  Type *WideVecTy = EVT(WideVecVT).getTypeForEVT(*DAG.getContext());
+  if (!TLI.isLegalStridedLoadStore(DAG.getDataLayout(), WideVecTy, Align))
+    return SDValue();
+
   MVT ContainerVT = TLI.getContainerForFixedLengthVector(WideVecVT);
   SDValue VL =
       getDefaultVLOps(WideVecVT, ContainerVT, DL, DAG, Subtarget).second;
@@ -11452,12 +11480,6 @@ static SDValue performCONCAT_VECTORSCombine(SDNode *N, SelectionDAG &DAG,
   MachineMemOperand *MMO = DAG.getMachineFunction().getMachineMemOperand(
       BaseLd->getPointerInfo(), BaseLd->getMemOperand()->getFlags(), MemSize,
       Align);
-
-  // Can't do the combine if the common alignment isn't naturally aligned with
-  // the new element type
-  if (!TLI.allowsMemoryAccessForAlignment(*DAG.getContext(),
-                                          DAG.getDataLayout(), WideVecVT, *MMO))
-    return SDValue();
 
   SDValue StridedLoad = DAG.getMemIntrinsicNode(ISD::INTRINSIC_W_CHAIN, DL, VTs,
                                                 Ops, WideVecVT, MMO);
@@ -15637,7 +15659,13 @@ bool RISCVTargetLowering::allowsMisalignedMemoryAccesses(
     return true;
   }
 
-  return false;
+  // Note: We lower an unmasked unaligned vector access to an equally sized
+  // e8 element type access.  Given this, we effectively support all unmasked
+  // misaligned accesses.  TODO: Work through the codegen implications of
+  // allowing such accesses to be formed, and considered fast.
+  if (Fast)
+    *Fast = 0;
+  return Subtarget.enableUnalignedVectorMem();
 }
 
 bool RISCVTargetLowering::splitValueIntoRegisterParts(
@@ -15796,6 +15824,27 @@ bool RISCVTargetLowering::isLegalInterleavedAccessType(
   if (Fractional)
     return true;
   return Factor * LMUL <= 8;
+}
+
+bool RISCVTargetLowering::isLegalStridedLoadStore(const DataLayout &DL,
+                                                  Type *DataType,
+                                                  Align Alignment) const {
+  if (!Subtarget.hasVInstructions())
+    return false;
+
+  // Only support fixed vectors if we know the minimum vector size.
+  if (isa<FixedVectorType>(DataType) && !Subtarget.useRVVForFixedLengthVectors())
+    return false;
+
+  Type *ScalarType = DataType->getScalarType();
+  if (!isLegalElementTypeForRVV(ScalarType))
+    return false;
+
+  if (!Subtarget.enableUnalignedVectorMem() &&
+      Alignment < DL.getTypeStoreSize(ScalarType).getFixedValue())
+    return false;
+
+  return true;
 }
 
 /// Lower an interleaved load into a vlsegN intrinsic.
