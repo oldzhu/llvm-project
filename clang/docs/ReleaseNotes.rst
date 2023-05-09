@@ -261,6 +261,11 @@ Improvements to Clang's diagnostics
   (`#62247: <https://github.com/llvm/llvm-project/issues/62247>`_).
 - Clang now diagnoses shadowing of lambda's template parameter by a capture.
   (`#61105: <https://github.com/llvm/llvm-project/issues/61105>`_).
+- Address a false positive in ``-Wpacked`` when applied to a non-pod type using
+  Clang ABI >= 15.
+  (`#62353: <https://github.com/llvm/llvm-project/issues/62353>`_,
+  fallout from the non-POD packing ABI fix in LLVM 15).
+
 
 Bug Fixes in This Version
 -------------------------
@@ -370,7 +375,7 @@ Bug Fixes in This Version
   (`#62192 <https://github.com/llvm/llvm-project/issues/62192>`_)
 - Fix crash when attempting to pass a non-pointer type as first argument of
   ``__builtin_assume_aligned``.
-  (`#62305 <https://github.com/llvm/llvm-project/issues/62305>`_) 
+  (`#62305 <https://github.com/llvm/llvm-project/issues/62305>`_)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -416,6 +421,8 @@ Bug Fixes to C++ Support
   initialization.
   (`#61567 <https://github.com/llvm/llvm-project/issues/61567>`_)
 - Fix a crash when expanding a pack as the index of a subscript expression.
+- Fix handling of constexpr dynamic memory allocations in template
+  arguments. (`#62462 <https://github.com/llvm/llvm-project/issues/62462>`_)
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
