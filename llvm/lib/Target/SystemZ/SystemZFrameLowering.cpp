@@ -1389,7 +1389,7 @@ void SystemZXPLINKFrameLowering::inlineStackProbe(
       // slot in the parameter list instead and we now restore it from there.
       // LGR r3, r0
       BuildMI(*NextMBB, StackAllocMI, DL, ZII->get(SystemZ::LGR))
-          .addReg(SystemZ::R3D)
+          .addReg(SystemZ::R3D, RegState::Define)
           .addReg(SystemZ::R0D);
       // LG r3, 2192(r3)
       BuildMI(*NextMBB, StackAllocMI, DL, ZII->get(SystemZ::LG))
