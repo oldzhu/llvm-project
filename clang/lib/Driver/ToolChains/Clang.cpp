@@ -2511,9 +2511,6 @@ static void CollectArgsForIntegratedAssembler(Compilation &C,
 
   Args.AddLastArg(CmdArgs, options::OPT_femit_dwarf_unwind_EQ);
 
-  Args.addOptInFlag(CmdArgs, options::OPT_femit_compact_unwind_non_canonical,
-                    options::OPT_fno_emit_compact_unwind_non_canonical);
-
   // If you add more args here, also add them to the block below that
   // starts with "// If CollectArgsForIntegratedAssembler() isn't called below".
 
@@ -7065,6 +7062,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(A->getValue());
     A->claim();
   }
+
+  Args.addOptInFlag(CmdArgs, options::OPT_fsafe_buffer_usage_suggestions,
+                    options::OPT_fno_safe_buffer_usage_suggestions);
 
   // Setup statistics file output.
   SmallString<128> StatsFile = getStatsFileName(Args, Output, Input, D);
