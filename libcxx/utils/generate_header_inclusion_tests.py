@@ -95,7 +95,6 @@ assert all(v == sorted(v) for k, v in mandatory_inclusions.items())
 lit_markup = {
   "barrier": ["UNSUPPORTED: no-threads"],
   "filesystem": ["UNSUPPORTED: no-filesystem"],
-  "format": ["UNSUPPORTED: libcpp-has-no-incomplete-format"],
   "iomanip": ["UNSUPPORTED: no-localization"],
   "ios": ["UNSUPPORTED: no-localization"],
   "iostream": ["UNSUPPORTED: no-localization"],
@@ -128,6 +127,7 @@ def get_unsupported_line(includee):
         "17": ['UNSUPPORTED: c++03, c++11, c++14'],
         "20": ['UNSUPPORTED: c++03, c++11, c++14, c++17'],
         "23": ['UNSUPPORTED: c++03, c++11, c++14, c++17, c++20'],
+        "26": ['UNSUPPORTED: c++03, c++11, c++14, c++17, c++20, c++23'],
     }[v]
 
 
