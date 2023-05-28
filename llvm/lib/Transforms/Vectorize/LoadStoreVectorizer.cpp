@@ -137,7 +137,8 @@ using EqClassKey =
                unsigned /* Load/Store element size bits */,
                char /* IsLoad; char b/c bool can't be a DenseMap key */
                >;
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const EqClassKey &K) {
+[[maybe_unused]] llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
+                                               const EqClassKey &K) {
   const auto &[UnderlyingObject, AddrSpace, ElementSize, IsLoad] = K;
   return OS << (IsLoad ? "load" : "store") << " of " << *UnderlyingObject
             << " of element size " << ElementSize << " bits in addrspace "
@@ -173,7 +174,7 @@ void sortChainInOffsetOrder(Chain &C) {
   });
 }
 
-void dumpChain(ArrayRef<ChainElem> C) {
+[[maybe_unused]] void dumpChain(ArrayRef<ChainElem> C) {
   for (const auto &E : C) {
     dbgs() << "  " << *E.Inst << " (offset " << E.OffsetFromLeader << ")\n";
   }
@@ -1426,7 +1427,7 @@ std::vector<Chain> Vectorizer::gatherChains(ArrayRef<Instruction *> Instrs) {
 
     bool MatchFound = false;
     auto ChainIter = MRU.begin();
-    for (int J = 0; J < MaxChainsToTry && ChainIter != MRU.end();
+    for (size_t J = 0; J < MaxChainsToTry && ChainIter != MRU.end();
          ++J, ++ChainIter) {
       std::optional<APInt> Offset =
           getConstantOffset(getLoadStorePointerOperand(ChainIter->first),
