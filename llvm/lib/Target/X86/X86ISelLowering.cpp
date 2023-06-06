@@ -619,6 +619,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::FROUND, VT, Action);
     setOperationAction(ISD::FROUNDEVEN, VT, Action);
     setOperationAction(ISD::FTRUNC, VT, Action);
+    setOperationAction(ISD::FLDEXP, VT, Action);
   };
 
   if (!Subtarget.useSoftFloat() && Subtarget.hasSSE2()) {
@@ -678,6 +679,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::STRICT_FMAXIMUM, MVT::f16, Promote);
     setOperationAction(ISD::STRICT_FSQRT, MVT::f16, Promote);
     setOperationAction(ISD::STRICT_FPOW, MVT::f16, Promote);
+    setOperationAction(ISD::STRICT_FLDEXP, MVT::f16, Promote);
     setOperationAction(ISD::STRICT_FLOG, MVT::f16, Promote);
     setOperationAction(ISD::STRICT_FLOG2, MVT::f16, Promote);
     setOperationAction(ISD::STRICT_FLOG10, MVT::f16, Promote);
@@ -19101,11 +19103,11 @@ static SDValue lower256BitShuffle(const SDLoc &DL, ArrayRef<int> Mask, MVT VT,
     return DAG.getBitcast(VT, DAG.getVectorShuffle(FpVT, DL, V1, V2, Mask));
   }
 
-  if (VT == MVT::v16f16 || VT.getVectorElementType() == MVT::bf16) {
-    MVT IVT = VT.changeVectorElementTypeToInteger();
-    V1 = DAG.getBitcast(IVT, V1);
-    V2 = DAG.getBitcast(IVT, V2);
-    return DAG.getBitcast(VT, DAG.getVectorShuffle(IVT, DL, V1, V2, Mask));
+  if (VT == MVT::v16f16 || VT == MVT::v16bf16) {
+    V1 = DAG.getBitcast(MVT::v16i16, V1);
+    V2 = DAG.getBitcast(MVT::v16i16, V2);
+    return DAG.getBitcast(VT,
+                          DAG.getVectorShuffle(MVT::v16i16, DL, V1, V2, Mask));
   }
 
   switch (VT.SimpleTy) {
