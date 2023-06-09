@@ -707,7 +707,6 @@ clang-format
 - Fix all known issues associated with ``LambdaBodyIndentation: OuterScope``.
 - Add ``BracedInitializerIndentWidth`` which can be used to configure
   the indentation level of the contents of braced init lists.
-- Add ``KeepEmptyLinesAtEOF`` to keep empty lines at end of file.
 
 libclang
 --------
@@ -727,6 +726,9 @@ libclang
 - Added check in ``clang_getFieldDeclBitWidth`` for whether a bit-field
   has an evaluable bit width. Fixes undefined behavior when called on a
   bit-field whose width depends on a template parameter.
+
+- Added ``CXBinaryOperatorKind`` and ``CXUnaryOperatorKind``.
+  (`#29138 <https://github.com/llvm/llvm-project/issues/29138>`_)
 
 Static Analyzer
 ---------------
