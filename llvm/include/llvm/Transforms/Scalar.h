@@ -71,9 +71,6 @@ FunctionPass *createSROAPass(bool PreserveCFG = true);
 // LICM - This pass is a loop invariant code motion and memory promotion pass.
 //
 Pass *createLICMPass();
-Pass *createLICMPass(unsigned LicmMssaOptCap,
-                     unsigned LicmMssaNoAccForPromotionCap,
-                     bool AllowSpeculation);
 
 //===----------------------------------------------------------------------===//
 //
@@ -299,13 +296,6 @@ FunctionPass *createStraightLineStrengthReducePass();
 // order following this pass.
 //
 FunctionPass *createPlaceSafepointsPass();
-
-//===----------------------------------------------------------------------===//
-//
-// RewriteStatepointsForGC - Rewrite any gc.statepoints which do not yet have
-// explicit relocations to include explicit relocations.
-//
-ModulePass *createRewriteStatepointsForGCLegacyPass();
 
 //===----------------------------------------------------------------------===//
 //
