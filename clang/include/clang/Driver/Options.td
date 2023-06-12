@@ -2312,6 +2312,11 @@ def fmacro_backtrace_limit_EQ : Joined<["-"], "fmacro-backtrace-limit=">,
   Group<f_Group>, Flags<[NoXarchOption, CC1Option, CoreOption]>,
   HelpText<"Set the maximum number of entries to print in a macro expansion backtrace (0 = no limit)">,
   MarshallingInfoInt<DiagnosticOpts<"MacroBacktraceLimit">, "DiagnosticOptions::DefaultMacroBacktraceLimit">;
+def fcaret_diagnostics_max_lines_EQ :
+  Joined<["-"], "fcaret-diagnostics-max-lines=">,
+  Group<f_Group>, Flags<[CC1Option, CoreOption]>,
+  HelpText<"Set the maximum number of source lines to show in a caret diagnostic (0 = no limit).">,
+  MarshallingInfoInt<DiagnosticOpts<"SnippetLineLimit">, "DiagnosticOptions::DefaultSnippetLineLimit">;
 defm merge_all_constants : BoolFOption<"merge-all-constants",
   CodeGenOpts<"MergeAllConstants">, DefaultFalse,
   PosFlag<SetTrue, [CC1Option, CoreOption], "Allow">, NegFlag<SetFalse, [], "Disallow">,
@@ -3570,16 +3575,14 @@ def mdefault_build_attributes : Joined<["-"], "mdefault-build-attributes">, Grou
 def mno_default_build_attributes : Joined<["-"], "mno-default-build-attributes">, Group<m_Group>;
 let Flags = [TargetSpecific] in {
 def mconstant_cfstrings : Flag<["-"], "mconstant-cfstrings">, Group<clang_ignored_m_Group>;
-} // let Flags = [TargetSpecific]
-def mconsole : Joined<["-"], "mconsole">, Group<m_Group>, Flags<[NoXarchOption]>;
-def mwindows : Joined<["-"], "mwindows">, Group<m_Group>, Flags<[NoXarchOption]>;
-def mdll : Joined<["-"], "mdll">, Group<m_Group>, Flags<[NoXarchOption]>;
-def municode : Joined<["-"], "municode">, Group<m_Group>, Flags<[NoXarchOption]>;
-def mthreads : Joined<["-"], "mthreads">, Group<m_Group>, Flags<[NoXarchOption]>;
-def mguard_EQ : Joined<["-"], "mguard=">, Group<m_Group>, Flags<[NoXarchOption]>,
+def mconsole : Joined<["-"], "mconsole">, Group<m_Group>;
+def mwindows : Joined<["-"], "mwindows">, Group<m_Group>;
+def mdll : Joined<["-"], "mdll">, Group<m_Group>;
+def municode : Joined<["-"], "municode">, Group<m_Group>;
+def mthreads : Joined<["-"], "mthreads">, Group<m_Group>;
+def mguard_EQ : Joined<["-"], "mguard=">, Group<m_Group>,
   HelpText<"Enable or disable Control Flow Guard checks and guard tables emission">,
   Values<"none,cf,cf-nochecks">;
-let Flags = [TargetSpecific] in {
 def mcpu_EQ : Joined<["-"], "mcpu=">, Group<m_Group>,
   HelpText<"For a list of available CPUs for the target use '-mcpu=help'">;
 def mmcu_EQ : Joined<["-"], "mmcu=">, Group<m_Group>;
@@ -4803,7 +4806,11 @@ def mssse3 : Flag<["-"], "mssse3">, Group<m_x86_Features_Group>;
 def mno_ssse3 : Flag<["-"], "mno-ssse3">, Group<m_x86_Features_Group>;
 def msse4_1 : Flag<["-"], "msse4.1">, Group<m_x86_Features_Group>;
 def mno_sse4_1 : Flag<["-"], "mno-sse4.1">, Group<m_x86_Features_Group>;
+} // let Flags = [TargetSpecific]
+// TODO: Make -msse4.2 TargetSpecific after
+// https://github.com/llvm/llvm-project/issues/63270 is fixed.
 def msse4_2 : Flag<["-"], "msse4.2">, Group<m_x86_Features_Group>;
+let Flags = [TargetSpecific] in {
 def mno_sse4_2 : Flag<["-"], "mno-sse4.2">, Group<m_x86_Features_Group>;
 def msse4 : Flag<["-"], "msse4">, Alias<msse4_2>;
 // -mno-sse4 turns off sse4.1 which has the effect of turning off everything
@@ -6003,10 +6010,6 @@ def ftabstop : Separate<["-"], "ftabstop">, MetaVarName<"<N>">,
 def ferror_limit : Separate<["-"], "ferror-limit">, MetaVarName<"<N>">,
   HelpText<"Set the maximum number of errors to emit before stopping (0 = no limit).">,
   MarshallingInfoInt<DiagnosticOpts<"ErrorLimit">>;
-def fcaret_diagnostics_max_lines :
-  Separate<["-"], "fcaret-diagnostics-max-lines">, MetaVarName<"<N>">,
-  HelpText<"Set the maximum number of source lines to show in a caret diagnostic">,
-  MarshallingInfoInt<DiagnosticOpts<"SnippetLineLimit">, "DiagnosticOptions::DefaultSnippetLineLimit">;
 def verify_EQ : CommaJoined<["-"], "verify=">,
   MetaVarName<"<prefixes>">,
   HelpText<"Verify diagnostic output using comment directives that start with"
