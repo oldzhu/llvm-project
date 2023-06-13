@@ -33,6 +33,7 @@
 #include "llvm/CodeGen/CodeGenCommonISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/GCMetadata.h"
+#include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -6595,7 +6596,7 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
     const DataLayout DLayout = DAG.getDataLayout();
     EVT EnvVT = TLI.getValueType(DLayout, I.getType());
     Align TempAlign = DAG.getEVTAlign(EnvVT);
-    SDValue Chain = DAG.getRoot();
+    SDValue Chain = getRoot();
     // Use GET_FPENV if it is legal or custom. Otherwise use memory-based node
     // and temporary storage in stack.
     if (TLI.isOperationLegalOrCustom(ISD::SET_FPENV, EnvVT)) {
@@ -7289,6 +7290,8 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
   case Intrinsic::vector_reduce_umin:
   case Intrinsic::vector_reduce_fmax:
   case Intrinsic::vector_reduce_fmin:
+  case Intrinsic::vector_reduce_fmaximum:
+  case Intrinsic::vector_reduce_fminimum:
     visitVectorReduce(I, Intrinsic);
     return;
 
@@ -10009,6 +10012,12 @@ void SelectionDAGBuilder::visitVectorReduce(const CallInst &I,
     break;
   case Intrinsic::vector_reduce_fmin:
     Res = DAG.getNode(ISD::VECREDUCE_FMIN, dl, VT, Op1, SDFlags);
+    break;
+  case Intrinsic::vector_reduce_fmaximum:
+    Res = DAG.getNode(ISD::VECREDUCE_FMAXIMUM, dl, VT, Op1, SDFlags);
+    break;
+  case Intrinsic::vector_reduce_fminimum:
+    Res = DAG.getNode(ISD::VECREDUCE_FMINIMUM, dl, VT, Op1, SDFlags);
     break;
   default:
     llvm_unreachable("Unhandled vector reduce intrinsic");
