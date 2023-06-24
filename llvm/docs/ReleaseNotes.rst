@@ -80,6 +80,12 @@ Changes to LLVM infrastructure
 * InstructionSimplify APIs now require instructions be inserted into a
   parent function.
 
+* A new FatLTO pipeline was added to support generating object files that have
+  both machine code and LTO compatible bitcode. See the :doc:`FatLTO`
+  documentation and the original
+  `RFC  <https://discourse.llvm.org/t/rfc-ffat-lto-objects-support/63977>`_
+  for more details.
+
 Changes to building LLVM
 ------------------------
 
@@ -143,6 +149,8 @@ Changes to the AMDGPU Backend
 * Added llvm.amdgcn.exp2.f32 intrinsic. This provides direct access to
   v_exp_f32.
 
+* llvm.log2.f32 is now lowered accurately. Use llvm.amdgcn.log.f32 to
+  access the old behavior.
 
 Changes to the ARM Backend
 --------------------------
