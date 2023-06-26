@@ -1162,6 +1162,11 @@ def hlfir_ElementalAddrOp : hlfir_Op<"elemental_addr", [Terminator, HasParent<"R
     mlir::Region::BlockArgListType getIndices() {
       return getBody().getArguments();
     }
+
+    /// Return the hlfir::YieldOp terminator of the operation
+    /// body. It yields the variable element address.
+    /// This should only be called once the ElementalAddrOp has been built.
+    hlfir::YieldOp getYieldOp();
   }];
 
   let hasVerifier = 1;
@@ -1418,6 +1423,31 @@ def hlfir_ForallIndexOp : hlfir_Op<"forall_index", [fir_FortranVariableOpInterfa
   }];
 
   let hasCanonicalizeMethod = 1;
+}
+
+def hlfir_CharExtremumOp : hlfir_Op<"char_extremum", []> {
+  let summary = "Find max/min from given character strings";
+  let description = [{
+    Find the lexicographical minimum or maximum of two or more character 
+    strings of the same character kind and return the string with the lexicographical 
+    minimum or maximum number of characters. Example:
+
+    %0 = hlfir.char_extremum min, %arg0, %arg1 : (!fir.ref<!fir.char<1,10>>, !fir.ref<!fir.char<1,20>>) -> !hlfir.expr<!fir.char<1,10>>
+  }];
+
+  let arguments = (ins hlfir_CharExtremumPredicateAttr:$predicate,
+                  Variadic<AnyScalarCharacterEntity>:$strings
+  );
+
+  let results = (outs AnyScalarCharacterExpr);
+
+  let assemblyFormat = [{
+    $predicate `,` $strings attr-dict `:` functional-type(operands, results)
+  }];
+
+  let builders = [OpBuilder<(ins "hlfir::CharExtremumPredicate":$predicate, "mlir::ValueRange":$strings)>];
+
+  let hasVerifier = 1;
 }
 
 #endif // FORTRAN_DIALECT_HLFIR_OPS
