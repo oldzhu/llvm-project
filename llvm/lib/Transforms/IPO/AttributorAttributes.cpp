@@ -1071,15 +1071,25 @@ struct AAPointerInfoImpl
     SmallVector<std::pair<const Access *, bool>, 8> InterferingAccesses;
 
     Function &Scope = *I.getFunction();
-    const auto *NoSyncAA = A.getAAFor<AANoSync>(
-        QueryingAA, IRPosition::function(Scope), DepClassTy::OPTIONAL);
+    bool IsKnownNoSync;
+    bool IsAssumedNoSync = AA::hasAssumedIRAttr<Attribute::NoSync>(
+        A, &QueryingAA, IRPosition::function(Scope), DepClassTy::OPTIONAL,
+        IsKnownNoSync);
     const auto *ExecDomainAA = A.lookupAAFor<AAExecutionDomain>(
         IRPosition::function(Scope), &QueryingAA, DepClassTy::NONE);
-    bool AllInSameNoSyncFn = NoSyncAA && NoSyncAA->isAssumedNoSync();
+    bool AllInSameNoSyncFn = IsAssumedNoSync;
     bool InstIsExecutedByInitialThreadOnly =
         ExecDomainAA && ExecDomainAA->isExecutedByInitialThreadOnly(I);
+
+    // If the function is not ending in aligned barriers, we need the stores to
+    // be in aligned barriers. The load being in one is not sufficient since the
+    // store might be executed by a thread that disappears after, causing the
+    // aligned barrier guarding the load to unblock and the load to read a value
+    // that has no CFG path to the load.
     bool InstIsExecutedInAlignedRegion =
-        ExecDomainAA && ExecDomainAA->isExecutedInAlignedRegion(A, I);
+        FindInterferingReads && ExecDomainAA &&
+        ExecDomainAA->isExecutedInAlignedRegion(A, I);
+
     if (InstIsExecutedInAlignedRegion || InstIsExecutedByInitialThreadOnly)
       A.recordDependence(*ExecDomainAA, QueryingAA, DepClassTy::OPTIONAL);
 
@@ -1105,7 +1115,8 @@ struct AAPointerInfoImpl
       if (!FnExecDomainAA)
         return false;
       if (InstIsExecutedInAlignedRegion ||
-          FnExecDomainAA->isExecutedInAlignedRegion(A, I)) {
+          (FindInterferingWrites &&
+           FnExecDomainAA->isExecutedInAlignedRegion(A, I))) {
         A.recordDependence(*FnExecDomainAA, QueryingAA, DepClassTy::OPTIONAL);
         return true;
       }
@@ -10299,8 +10310,8 @@ struct AANoFPClassImpl : AANoFPClass {
 
     SmallVector<Attribute> Attrs;
     A.getAttrs(getIRPosition(), {Attribute::NoFPClass}, Attrs, false);
-    if (!Attrs.empty()) {
-      addKnownBits(Attrs[0].getNoFPClass());
+    for (const auto &Attr : Attrs) {
+      addKnownBits(Attr.getNoFPClass());
       return;
     }
 

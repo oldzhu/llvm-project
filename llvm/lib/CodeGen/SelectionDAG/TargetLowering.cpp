@@ -8060,6 +8060,7 @@ SDValue TargetLowering::expandFMINNUM_FMAXNUM(SDNode *Node,
 /// for the floating-point mode.
 static bool isFCmpEqualZero(FPClassTest Test, const fltSemantics &Semantics,
                             const MachineFunction &MF) {
+  // TODO: Handle unordered compares
   if (Test == fcZero &&
       MF.getDenormalMode(Semantics).Input == DenormalMode::IEEE)
     return true;
@@ -8093,7 +8094,7 @@ SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
   // Some checks may be represented as inversion of simpler check, for example
   // "inf|normal|subnormal|zero" => !"nan".
   bool IsInverted = false;
-  if (FPClassTest InvertedCheck = getInvertedFPClassTest(Test)) {
+  if (FPClassTest InvertedCheck = invertFPClassTestIfSimpler(Test)) {
     IsInverted = true;
     Test = InvertedCheck;
   }
@@ -8123,6 +8124,18 @@ SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
                                 OperandVT.getScalarType().getSimpleVT())) {
       return DAG.getSetCC(DL, ResultVT, Op, Op,
                           IsInverted ? ISD::SETO : ISD::SETUO);
+    }
+
+    if (Test == fcInf &&
+        isCondCodeLegalOrCustom(IsInverted ? ISD::SETUNE : ISD::SETOEQ,
+                                OperandVT.getScalarType().getSimpleVT()) &&
+        isOperationLegalOrCustom(ISD::FABS, OperandVT.getScalarType())) {
+      // isinf(x) --> fabs(x) == inf
+      SDValue Abs = DAG.getNode(ISD::FABS, DL, OperandVT, Op);
+      SDValue Inf =
+          DAG.getConstantFP(APFloat::getInf(Semantics), DL, OperandVT);
+      return DAG.getSetCC(DL, ResultVT, Abs, Inf,
+                          IsInverted ? ISD::SETUNE : ISD::SETOEQ);
     }
   }
 
@@ -8207,8 +8220,6 @@ SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
     // fcZero | fcSubnormal => test all exponent bits are 0
     // TODO: Handle sign bit specific cases
     if (PartialCheck == (fcZero | fcSubnormal)) {
-      assert(!IsInverted && "should handle inverted case");
-
       SDValue ExpBits = DAG.getNode(ISD::AND, DL, IntVT, OpAsInt, ExpMaskV);
       SDValue ExpIsZero =
           DAG.getSetCC(DL, ResultVT, ExpBits, ZeroV, ISD::SETEQ);
