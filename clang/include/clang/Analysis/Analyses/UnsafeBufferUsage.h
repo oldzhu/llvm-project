@@ -16,10 +16,8 @@
 
 #include "clang/AST/Decl.h"
 #include "clang/AST/Stmt.h"
-#include "clang/Sema/Sema.h"
 
 namespace clang {
-class Sema;
 
 using DefMapTy = llvm::DenseMap<const VarDecl *, std::vector<const VarDecl *>>;
 
@@ -47,12 +45,16 @@ public:
 
   /// Returns a reference to the `Preprocessor`:
   virtual bool isSafeBufferOptOut(const SourceLocation &Loc) const = 0;
+
+  virtual std::string
+  getUnsafeBufferUsageAttributeTextAt(SourceLocation Loc,
+                                      StringRef WSSuffix = "") const = 0;
 };
 
 // This function invokes the analysis and allows the caller to react to it
 // through the handler class.
 void checkUnsafeBufferUsage(const Decl *D, UnsafeBufferUsageHandler &Handler,
-                            bool EmitSuggestions, Sema &Sema);
+                            bool EmitSuggestions);
 
 namespace internal {
 // Tests if any two `FixItHint`s in `FixIts` conflict.  Two `FixItHint`s
