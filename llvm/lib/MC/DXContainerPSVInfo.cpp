@@ -40,11 +40,15 @@ void PSVRuntimeInfo::write(raw_ostream &OS, uint32_t Version) const {
   OS.write(reinterpret_cast<const char *>(&BaseData), InfoSize);
 
   uint32_t ResourceCount = static_cast<uint32_t>(Resources.size());
-  if (sys::IsBigEndianHost)
+  uint32_t BindingSizeSwapped = BindingSize;
+  if (sys::IsBigEndianHost) {
     sys::swapByteOrder(ResourceCount);
-  OS.write(reinterpret_cast<const char *>(&ResourceCount), sizeof(uint32_t));
+    sys::swapByteOrder(BindingSizeSwapped);
+  }
 
-  OS.write(reinterpret_cast<const char *>(&BindingSize), sizeof(uint32_t));
+  OS.write(reinterpret_cast<const char *>(&ResourceCount), sizeof(uint32_t));
+  OS.write(reinterpret_cast<const char *>(&BindingSizeSwapped), sizeof(uint32_t));
+  
   for (const auto &Res : Resources)
     OS.write(reinterpret_cast<const char *>(&Res), BindingSize);
 }
