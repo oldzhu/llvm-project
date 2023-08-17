@@ -3436,12 +3436,18 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT LowerHintTy) {
   }
   case G_UADDE: {
     auto [Res, CarryOut, LHS, RHS, CarryIn] = MI.getFirst5Regs();
-    LLT Ty = MRI.getType(Res);
+    const LLT CondTy = MRI.getType(CarryOut);
+    const LLT Ty = MRI.getType(Res);
 
     auto TmpRes = MIRBuilder.buildAdd(Ty, LHS, RHS);
     auto ZExtCarryIn = MIRBuilder.buildZExt(Ty, CarryIn);
     MIRBuilder.buildAdd(Res, TmpRes, ZExtCarryIn);
-    MIRBuilder.buildICmp(CmpInst::ICMP_ULT, CarryOut, Res, LHS);
+
+    auto Res_EQ_LHS = MIRBuilder.buildICmp(CmpInst::ICMP_EQ, CondTy, Res, LHS);
+    auto Res_ULT_LHS =
+        MIRBuilder.buildICmp(CmpInst::ICMP_ULT, CondTy, Res, LHS);
+    auto And = MIRBuilder.buildAnd(CondTy, Res_EQ_LHS, CarryIn);
+    MIRBuilder.buildOr(CarryOut, And, Res_ULT_LHS);
 
     MI.eraseFromParent();
     return Legalized;
@@ -4855,6 +4861,13 @@ LegalizerHelper::moreElementsVector(MachineInstr &MI, unsigned TypeIdx,
   case TargetOpcode::G_FNEG:
   case TargetOpcode::G_FABS:
   case TargetOpcode::G_FSQRT:
+  case TargetOpcode::G_FCEIL:
+  case TargetOpcode::G_FFLOOR:
+  case TargetOpcode::G_FNEARBYINT:
+  case TargetOpcode::G_FRINT:
+  case TargetOpcode::G_INTRINSIC_ROUND:
+  case TargetOpcode::G_INTRINSIC_ROUNDEVEN:
+  case TargetOpcode::G_INTRINSIC_TRUNC:
   case TargetOpcode::G_BSWAP:
   case TargetOpcode::G_FCANONICALIZE:
   case TargetOpcode::G_SEXT_INREG:
