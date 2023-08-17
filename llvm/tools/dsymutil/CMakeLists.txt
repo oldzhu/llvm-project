@@ -40,6 +40,6 @@ add_llvm_tool(dsymutil
 
 if(APPLE)
   target_link_libraries(dsymutil PRIVATE "-framework CoreFoundation")
-endif(APPLE)
+endif(APPLE AND NOT LLVM_TOOL_LLVM_DRIVER_BUILD)
 
 # target_link_libraries(dsymutil PRIVATE ${LLVM_ATOMIC_LIB})
