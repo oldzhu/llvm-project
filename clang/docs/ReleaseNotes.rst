@@ -107,6 +107,7 @@ C23 Feature Support
   and the ``__STDC_VERSION__`` macro now expands to ``202311L`` instead of its
   previous placeholder value. Clang continues to accept ``-std=c2x`` and
   ``-std=gnu2x`` as aliases for C23 and GNU C23, respectively.
+- Clang now supports `requires c23` for module maps.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -189,6 +190,9 @@ Bug Fixes in This Version
   (`#64876 <https://github.com/llvm/llvm-project/issues/64876>`_)
 - Fixed an assertion if a function has cleanups and fatal erors.
   (`#48974 <https://github.com/llvm/llvm-project/issues/48974>`_)
+- Clang now emits an error if it is not possible to deduce array size for a
+  variable with incomplete array type.
+  (`#37257 <https://github.com/llvm/llvm-project/issues/37257>`_)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -229,6 +233,10 @@ Bug Fixes to C++ Support
 - Fix a crash when an immediate invocation is not a constant expression
   and appear in an implicit cast.
   (`#64949 <https://github.com/llvm/llvm-project/issues/64949>`_).
+
+- Fix crash when parsing ill-formed lambda trailing return type. Fixes:
+  (`#64962 <https://github.com/llvm/llvm-project/issues/64962>`_) and
+  (`#28679 <https://github.com/llvm/llvm-project/issues/28679>`_).
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
