@@ -466,8 +466,7 @@ static bool useFramePointerForTargetByDefault(const ArgList &Args,
     return !areOptimizationsEnabled(Args);
   }
 
-  if (Triple.isOSLinux() || Triple.getOS() == llvm::Triple::CloudABI ||
-      Triple.isOSHurd()) {
+  if (Triple.isOSLinux() || Triple.isOSHurd()) {
     switch (Triple.getArch()) {
     // Don't use a frame pointer on linux if optimizing for certain targets.
     case llvm::Triple::arm:
@@ -2434,7 +2433,8 @@ void Clang::DumpCompilationDatabase(Compilation &C, StringRef Filename,
     CWD = ".";
   CDB << "{ \"directory\": \"" << escape(*CWD) << "\"";
   CDB << ", \"file\": \"" << escape(Input.getFilename()) << "\"";
-  CDB << ", \"output\": \"" << escape(Output.getFilename()) << "\"";
+  if (Output.isFilename())
+    CDB << ", \"output\": \"" << escape(Output.getFilename()) << "\"";
   CDB << ", \"arguments\": [\"" << escape(D.ClangExecutable) << "\"";
   SmallString<128> Buf;
   Buf = "-x";
@@ -2446,7 +2446,8 @@ void Clang::DumpCompilationDatabase(Compilation &C, StringRef Filename,
     CDB << ", \"" << escape(Buf) << "\"";
   }
   CDB << ", \"" << escape(Input.getFilename()) << "\"";
-  CDB << ", \"-o\", \"" << escape(Output.getFilename()) << "\"";
+  if (Output.isFilename())
+    CDB << ", \"-o\", \"" << escape(Output.getFilename()) << "\"";
   for (auto &A: Args) {
     auto &O = A->getOption();
     // Skip language selection, which is positional.

@@ -313,11 +313,10 @@ struct OperationFormat {
     resultTypes.resize(op.getNumResults(), TypeResolution());
 
     hasImplicitTermTrait = llvm::any_of(op.getTraits(), [](const Trait &trait) {
-      return trait.getDef().isSubClassOf("SingleBlockImplicitTerminator");
+      return trait.getDef().isSubClassOf("SingleBlockImplicitTerminatorImpl");
     });
 
-    hasSingleBlockTrait =
-        hasImplicitTermTrait || op.getTrait("::mlir::OpTrait::SingleBlock");
+    hasSingleBlockTrait = op.getTrait("::mlir::OpTrait::SingleBlock");
   }
 
   /// Generate the operation parser from this format.
@@ -1396,7 +1395,7 @@ void OperationFormat::genElementParser(FormatElement *element, MethodBody &body,
     }
     body.unindent() << "}\n";
     body.unindent();
-  } else if (auto *attrDict = dyn_cast<PropDictDirective>(element)) {
+  } else if (dyn_cast<PropDictDirective>(element)) {
     body << "  if (parseProperties(parser, result))\n"
          << "    return ::mlir::failure();\n";
   } else if (auto *customDir = dyn_cast<CustomDirective>(element)) {
@@ -2190,7 +2189,7 @@ void OperationFormat::genElementPrinter(FormatElement *element,
   }
 
   // Emit the attribute dictionary.
-  if (auto *propDict = dyn_cast<PropDictDirective>(element)) {
+  if (dyn_cast<PropDictDirective>(element)) {
     genPropDictPrinter(*this, op, body);
     lastWasPunctuation = false;
     return;
