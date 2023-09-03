@@ -162,9 +162,6 @@ Improvements to Clang's diagnostics
   (`#64871: <https://github.com/llvm/llvm-project/issues/64871>`_).
   Also clang no longer emits false positive warnings about the output length of
   ``%g`` format specifier.
-- Clang now warns on unused variables declared and initialized in condition
-  expressions.
-  (`#61681: <https://github.com/llvm/llvm-project/issues/61681>`_)
 
 Bug Fixes in This Version
 -------------------------
@@ -208,6 +205,9 @@ Bug Fixes in This Version
 - For function multi-versioning using the ``target`` or ``target_clones``
   attributes, remove comdat for internal linkage functions.
   (`#65114 <https://github.com/llvm/llvm-project/issues/65114>`_)
+- Clang now reports ``-Wformat`` for bool value and char specifier confusion
+  in scanf. Fixes
+  (`#64987 <https://github.com/llvm/llvm-project/issues/64987>`_)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -253,6 +253,13 @@ Bug Fixes to C++ Support
   (`#64962 <https://github.com/llvm/llvm-project/issues/64962>`_) and
   (`#28679 <https://github.com/llvm/llvm-project/issues/28679>`_).
 
+- Fix a crash caused by substitution failure in expression requirements.
+  (`#64172 <https://github.com/llvm/llvm-project/issues/64172>`_) and
+  (`#64723 <https://github.com/llvm/llvm-project/issues/64723>`_).
+
+ Fix crash when parsing the requires clause of some generic lambdas.
+  (`#64689 <https://github.com/llvm/llvm-project/issues/64689>`_`)
+
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 - Fixed an import failure of recursive friend class template.
@@ -292,6 +299,17 @@ Arm and AArch64 Support
 
 Windows Support
 ^^^^^^^^^^^^^^^
+- Fixed an assertion failure that occurred due to a failure to propagate
+  ``MSInheritanceAttr`` attributes to class template instantiations created
+  for explicit template instantiation declarations.
+
+- The ``-fno-auto-import`` option was added for MinGW targets. The option both
+  affects code generation (inhibiting generating indirection via ``.refptr``
+  stubs for potentially auto imported symbols, generating smaller and more
+  efficient code) and linking (making the linker error out on such cases).
+  If the option only is used during code generation but not when linking,
+  linking may succeed but the resulting executables may expose issues at
+  runtime.
 
 LoongArch Support
 ^^^^^^^^^^^^^^^^^
@@ -330,6 +348,7 @@ Floating Point Support in Clang
 - Add ``__builtin_elementwise_pow`` builtin for floating point types only.
 - Add ``__builtin_elementwise_bitreverse`` builtin for integer types only.
 - Add ``__builtin_elementwise_sqrt`` builtin for floating point types only.
+- ``__builtin_isfpclass`` builtin now supports vector types.
 
 AST Matchers
 ------------

@@ -90,6 +90,7 @@ atof           |check|
 atol           |check|
 atoll          |check|
 exit           |check|    |check|
+abort          |check|    |check|
 labs           |check|
 llabs          |check|
 div            |check|
@@ -129,11 +130,22 @@ fopen          |check|    |check|
 fread          |check|    |check|
 =============  =========  ============
 
-stdio.h
+time.h
 --------
 
 =============  =========  ============
 Function Name  Available  RPC Required
 =============  =========  ============
 clock          |check|
+nanosleep      |check|
+=============  =========  ============
+
+assert.h
+--------
+
+=============  =========  ============
+Function Name  Available  RPC Required
+=============  =========  ============
+assert         |check|    |check|
+__assert_fail  |check|    |check|
 =============  =========  ============

@@ -199,6 +199,8 @@ def m_x86_Features_Group : OptionGroup<"<x86 features group>">,
                            DocName<"X86">;
 def m_riscv_Features_Group : OptionGroup<"<riscv features group>">,
                              Group<m_Group>, DocName<"RISC-V">;
+def m_ve_Features_Group : OptionGroup<"<ve features group>">,
+                          Group<m_Group>, DocName<"VE">;
 
 def m_libc_Group : OptionGroup<"<m libc group>">, Group<m_mips_Features_Group>,
                    Flags<[HelpHidden]>;
@@ -1466,6 +1468,17 @@ defm autolink : BoolFOption<"autolink",
   NegFlag<SetFalse, [], [ClangOption, CC1Option],
           "Disable generation of linker directives for automatic library linking">,
   PosFlag<SetTrue>>;
+
+let Flags = [TargetSpecific] in {
+defm auto_import : BoolFOption<"auto-import",
+  CodeGenOpts<"AutoImport">, DefaultTrue,
+  NegFlag<SetFalse, [], [ClangOption, CC1Option],
+          "MinGW specific. Disable support for automatic dllimport in code generation "
+          "and linking">,
+  PosFlag<SetTrue, [], [], "MinGW specific. Enable code generation support for "
+          "automatic dllimport, and enable support for it in the linker. "
+          "Enabled by default.">>;
+} // let Flags = [TargetSpecific]
 
 // In the future this option will be supported by other offloading
 // languages and accept other values such as CPU/GPU architectures,
@@ -5251,6 +5264,10 @@ def print_supported_cpus : Flag<["-", "--"], "print-supported-cpus">,
   HelpText<"Print supported cpu models for the given target (if target is not specified,"
            " it will print the supported cpus for the default target)">,
   MarshallingInfoFlag<FrontendOpts<"PrintSupportedCPUs">>;
+def print_supported_extensions : Flag<["-", "--"], "print-supported-extensions">,
+  Visibility<[ClangOption, CC1Option, CLOption]>,
+  HelpText<"Print supported extensions for RISC-V">,
+  MarshallingInfoFlag<FrontendOpts<"PrintSupportedExtensions">>;
 def : Flag<["-"], "mcpu=help">, Alias<print_supported_cpus>;
 def : Flag<["-"], "mtune=help">, Alias<print_supported_cpus>;
 def time : Flag<["-"], "time">,
@@ -5839,6 +5856,13 @@ def mno_gather : Flag<["-"], "mno-gather">, Group<m_x86_Features_Group>,
                  HelpText<"Disable generation of gather instructions in auto-vectorization(x86 only)">;
 def mno_scatter : Flag<["-"], "mno-scatter">, Group<m_x86_Features_Group>,
                   HelpText<"Disable generation of scatter instructions in auto-vectorization(x86 only)">;
+} // let Flags = [TargetSpecific]
+
+// VE feature flags
+let Flags = [TargetSpecific] in {
+def mvevpu : Flag<["-"], "mvevpu">, Group<m_ve_Features_Group>,
+  HelpText<"Emit VPU instructions for VE">;
+def mno_vevpu : Flag<["-"], "mno-vevpu">, Group<m_ve_Features_Group>;
 } // let Flags = [TargetSpecific]
 
 // These are legacy user-facing driver-level option spellings. They are always
