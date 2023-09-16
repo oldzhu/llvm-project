@@ -5353,8 +5353,9 @@ bool AArch64TargetLowering::shouldExtendGSIndex(EVT VT, EVT &EltTy) const {
   return false;
 }
 
-bool AArch64TargetLowering::shouldRemoveExtendFromGSIndex(EVT IndexVT,
+bool AArch64TargetLowering::shouldRemoveExtendFromGSIndex(SDValue Extend,
                                                           EVT DataVT) const {
+  const EVT IndexVT = Extend.getOperand(0).getValueType();
   // SVE only supports implicit extension of 32-bit indices.
   if (!Subtarget->hasSVE() || IndexVT.getVectorElementType() != MVT::i32)
     return false;
@@ -15969,7 +15970,7 @@ static SDValue performVecReduceAddCombine(SDNode *N, SelectionDAG &DAG,
     return performVecReduceAddCombineWithUADDLP(N, DAG);
 
   SDValue Op0 = N->getOperand(0);
-  if (N->getValueType(0) != MVT::i32 ||
+  if (N->getValueType(0) != MVT::i32 || Op0.getValueType().isScalableVT() ||
       Op0.getValueType().getVectorElementType() != MVT::i32)
     return SDValue();
 
