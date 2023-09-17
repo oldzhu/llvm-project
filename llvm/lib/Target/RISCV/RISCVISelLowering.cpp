@@ -1229,14 +1229,17 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
     }
   }
 
+  if (Subtarget.hasStdExtA())
+    setOperationAction(ISD::ATOMIC_LOAD_SUB, XLenVT, Expand);
+
   if (Subtarget.hasForcedAtomics()) {
-    // Set atomic rmw/cas operations to expand to force __sync libcalls.
+    // Force __sync libcalls to be emitted for atomic rmw/cas operations.
     setOperationAction(
         {ISD::ATOMIC_CMP_SWAP, ISD::ATOMIC_SWAP, ISD::ATOMIC_LOAD_ADD,
          ISD::ATOMIC_LOAD_SUB, ISD::ATOMIC_LOAD_AND, ISD::ATOMIC_LOAD_OR,
          ISD::ATOMIC_LOAD_XOR, ISD::ATOMIC_LOAD_NAND, ISD::ATOMIC_LOAD_MIN,
          ISD::ATOMIC_LOAD_MAX, ISD::ATOMIC_LOAD_UMIN, ISD::ATOMIC_LOAD_UMAX},
-        XLenVT, Expand);
+        XLenVT, LibCall);
   }
 
   if (Subtarget.hasVendorXTHeadMemIdx()) {
@@ -18580,6 +18583,20 @@ RISCVTargetLowering::getTargetMMOFlags(const MemSDNode &Node) const {
 bool RISCVTargetLowering::areTwoSDNodeTargetMMOFlagsMergeable(
     const MemSDNode &NodeX, const MemSDNode &NodeY) const {
   return getTargetMMOFlags(NodeX) == getTargetMMOFlags(NodeY);
+}
+
+bool RISCVTargetLowering::isCtpopFast(EVT VT) const {
+  if (VT.isScalableVector())
+    return isTypeLegal(VT) && Subtarget.hasStdExtZvbb();
+  if (VT.isFixedLengthVector() && Subtarget.hasStdExtZvbb())
+    return true;
+  return Subtarget.hasStdExtZbb() &&
+         (VT == MVT::i32 || VT == MVT::i64 || VT.isFixedLengthVector());
+}
+
+unsigned RISCVTargetLowering::getCustomCtpopCost(EVT VT,
+                                                 ISD::CondCode Cond) const {
+  return isCtpopFast(VT) ? 0 : 1;
 }
 
 namespace llvm::RISCVVIntrinsicsTable {
