@@ -3144,8 +3144,12 @@ static FormatToken *getFunctionName(const AnnotatedLine &Line) {
     }
 
     // Make sure the name is followed by a pair of parentheses.
-    if (Name)
-      return Tok->is(tok::l_paren) && Tok->MatchingParen ? Name : nullptr;
+    if (Name) {
+      return Tok->is(tok::l_paren) && Tok->isNot(TT_FunctionTypeLParen) &&
+                     Tok->MatchingParen
+                 ? Name
+                 : nullptr;
+    }
 
     // Skip keywords that may precede the constructor/destructor name.
     if (Tok->isOneOf(tok::kw_friend, tok::kw_inline, tok::kw_virtual,
@@ -4141,8 +4145,7 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
             (Style.SpacesInSquareBrackets &&
              Right.MatchingParen->isOneOf(TT_ArraySubscriptLSquare,
                                           TT_StructuredBindingLSquare,
-                                          TT_LambdaLSquare)) ||
-            Right.MatchingParen->is(TT_AttributeParen));
+                                          TT_LambdaLSquare)));
   }
   if (Right.is(tok::l_square) &&
       !Right.isOneOf(TT_ObjCMethodExpr, TT_LambdaLSquare,
