@@ -37,6 +37,27 @@ These changes are ones which we think may surprise users when upgrading to
 Clang |release| because of the opportunity they pose for disruption to existing
 code bases.
 
+- Fix a bug in reversed argument for templated operators.
+  This breaks code in C++20 which was previously accepted in C++17. Eg:
+
+  .. code-block:: cpp
+
+    struct P {};
+    template<class S> bool operator==(const P&, const S&);
+
+    struct A : public P {};
+    struct B : public P {};
+
+    // This equality is now ambiguous in C++20.
+    bool ambiguous(A a, B b) { return a == b; }
+
+    template<class S> bool operator!=(const P&, const S&);
+    // Ok. Found a matching operator!=.
+    bool fine(A a, B b) { return a == b; }
+
+  To reduce such widespread breakages, as an extension, Clang accepts this code
+  with an existing warning ``-Wambiguous-reversed-operator`` warning.
+  Fixes `GH <https://github.com/llvm/llvm-project/issues/53954>`_.
 
 C/C++ Language Potentially Breaking Changes
 -------------------------------------------
@@ -99,6 +120,10 @@ C++ Specific Potentially Breaking Changes
 - The warning `-Wenum-constexpr-conversion` is now also enabled by default on
   system headers and macros. It will be turned into a hard (non-downgradable)
   error in the next Clang release.
+
+- The flag `-fdelayed-template-parsing` won't be enabled by default with C++20
+  when targetting MSVC to match the behavior of MSVC. 
+  (`MSVC Docs <https://learn.microsoft.com/en-us/cpp/build/reference/permissive-standards-conformance?view=msvc-170>`_)
 
 ABI Changes in This Version
 ---------------------------
@@ -325,6 +350,11 @@ Improvements to Clang's diagnostics
       |               ~~~~~~~~~^~~~~~~~
 - Clang now always diagnoses when using non-standard layout types in ``offsetof`` .
   (`#64619: <https://github.com/llvm/llvm-project/issues/64619>`_)
+- Clang now diagnoses use of variable-length arrays in C++ by default (and
+  under ``-Wall`` in GNU++ mode). This is an extension supported by Clang and
+  GCC, but is very easy to accidentally use without realizing it's a
+  nonportable construct that has different semantics from a constant-sized
+  array. (`#62836 <https://github.com/llvm/llvm-project/issues/62836>`_)
 
 Bug Fixes in This Version
 -------------------------
