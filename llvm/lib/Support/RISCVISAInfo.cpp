@@ -996,11 +996,11 @@ static const char *ImpliedExtsD[] = {"f"};
 static const char *ImpliedExtsF[] = {"zicsr"};
 static const char *ImpliedExtsV[] = {"zvl128b", "zve64d"};
 static const char *ImpliedExtsXTHeadVdot[] = {"v"};
-static const char *ImpliedExtsXsfvcp[] = {"zve32x"};
-static const char *ImpliedExtsXsfvfnrclipxfqf[] = {"zve32f"};
-static const char *ImpliedExtsXsfvfwmaccqqq[] = {"zve32f", "zvfbfmin"};
-static const char *ImpliedExtsXsfvqmaccdod[] = {"zve32x"};
-static const char *ImpliedExtsXsfvqmaccqoq[] = {"zve32x"};
+static const char *ImpliedExtsXSfvcp[] = {"zve32x"};
+static const char *ImpliedExtsXSfvfnrclipxfqf[] = {"zve32f"};
+static const char *ImpliedExtsXSfvfwmaccqqq[] = {"zve32f", "zvfbfmin"};
+static const char *ImpliedExtsXSfvqmaccdod[] = {"zve32x"};
+static const char *ImpliedExtsXSfvqmaccqoq[] = {"zve32x"};
 static const char *ImpliedExtsZacas[] = {"a"};
 static const char *ImpliedExtsZcb[] = {"zca"};
 static const char *ImpliedExtsZcd[] = {"d", "zca"};
@@ -1014,7 +1014,7 @@ static const char *ImpliedExtsZfbfmin[] = {"f"};
 static const char *ImpliedExtsZfh[] = {"zfhmin"};
 static const char *ImpliedExtsZfhmin[] = {"f"};
 static const char *ImpliedExtsZfinx[] = {"zicsr"};
-static const char *ImpliedExtsZhinx[] = {"zfinx"};
+static const char *ImpliedExtsZhinx[] = {"zhinxmin"};
 static const char *ImpliedExtsZhinxmin[] = {"zfinx"};
 static const char *ImpliedExtsZicntr[] = {"zicsr"};
 static const char *ImpliedExtsZihpm[] = {"zicsr"};
@@ -1030,7 +1030,7 @@ static const char *ImpliedExtsZve64f[] = {"zve64x", "zve32f"};
 static const char *ImpliedExtsZve64x[] = {"zve32x", "zvl64b"};
 static const char *ImpliedExtsZvfbfmin[] = {"zve32f", "zfbfmin"};
 static const char *ImpliedExtsZvfbfwma[] = {"zvfbfmin"};
-static const char *ImpliedExtsZvfh[] = {"zve32f", "zfhmin"};
+static const char *ImpliedExtsZvfh[] = {"zvfhmin", "zfhmin"};
 static const char *ImpliedExtsZvfhmin[] = {"zve32f"};
 static const char *ImpliedExtsZvkn[] = {"zvkb", "zvkned", "zvknhb", "zvkt"};
 static const char *ImpliedExtsZvknc[] = {"zvbc", "zvkn"};
@@ -1067,11 +1067,11 @@ static constexpr ImpliedExtsEntry ImpliedExts[] = {
     {{"d"}, {ImpliedExtsD}},
     {{"f"}, {ImpliedExtsF}},
     {{"v"}, {ImpliedExtsV}},
-    {{"xsfvcp"}, {ImpliedExtsXsfvcp}},
-    {{"xsfvfnrclipxfqf"}, {ImpliedExtsXsfvfnrclipxfqf}},
-    {{"xsfvfwmaccqqq"}, {ImpliedExtsXsfvfwmaccqqq}},
-    {{"xsfvqmaccdod"}, {ImpliedExtsXsfvqmaccdod}},
-    {{"xsfvqmaccqoq"}, {ImpliedExtsXsfvqmaccqoq}},
+    {{"xsfvcp"}, {ImpliedExtsXSfvcp}},
+    {{"xsfvfnrclipxfqf"}, {ImpliedExtsXSfvfnrclipxfqf}},
+    {{"xsfvfwmaccqqq"}, {ImpliedExtsXSfvfwmaccqqq}},
+    {{"xsfvqmaccdod"}, {ImpliedExtsXSfvqmaccdod}},
+    {{"xsfvqmaccqoq"}, {ImpliedExtsXSfvqmaccqoq}},
     {{"xtheadvdot"}, {ImpliedExtsXTHeadVdot}},
     {{"zacas"}, {ImpliedExtsZacas}},
     {{"zcb"}, {ImpliedExtsZcb}},
