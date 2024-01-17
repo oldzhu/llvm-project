@@ -560,6 +560,9 @@ Improvements to Clang's diagnostics
 - Clang now diagnoses unexpanded packs within the template argument lists of function template specializations.
 - Clang now diagnoses attempts to bind a bitfield to an NTTP of a reference type as erroneous
   converted constant expression and not as a reference to subobject.
+- Clang now diagnoses the requirement that non-template friend declarations with requires clauses
+  and template friend declarations with a constraint that depends on a template parameter from an
+  enclosing template must be a definition.
 
 
 Improvements to Clang's time-trace
@@ -680,6 +683,8 @@ Bug Fixes in This Version
   Fixes (`#67317 <https://github.com/llvm/llvm-project/issues/67317>`_)
 - Clang now properly diagnoses use of stand-alone OpenMP directives after a
   label (including ``case`` or ``default`` labels).
+- Fix compiler memory leak for enums with underlying type larger than 64 bits.
+  Fixes (`#78311 <https://github.com/llvm/llvm-project/pull/78311>`_)
 
   Before:
 
@@ -753,6 +758,8 @@ Bug Fixes in This Version
 - Fix an issue where clang cannot find conversion function with template
   parameter when instantiation of template class.
   Fixes (`#77583 <https://github.com/llvm/llvm-project/issues/77583>`_)
+- Fix an issue where CTAD fails for function-type/array-type arguments.
+  Fixes (`#51710 <https://github.com/llvm/llvm-project/issues/51710>`_)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -913,6 +920,9 @@ Bug Fixes to C++ Support
   (`#64607 <https://github.com/llvm/llvm-project/issues/64607>`_)
   (`#64086 <https://github.com/llvm/llvm-project/issues/64086>`_)
 
+- Fixed a crash where we lost uninstantiated constraints on placeholder NTTP packs. Fixes:
+  (`#63837 <https://github.com/llvm/llvm-project/issues/63837>`_)
+
 - Fixed a regression where clang forgets how to substitute into constraints on template-template
   parameters. Fixes:
   (`#57410 <https://github.com/llvm/llvm-project/issues/57410>`_) and
@@ -1063,6 +1073,8 @@ RISC-V Support
 ^^^^^^^^^^^^^^
 - Unaligned memory accesses can be toggled by ``-m[no-]unaligned-access`` or the
   aliases ``-m[no-]strict-align``.
+- CodeGen of RV32E/RV64E was supported experimentally.
+- CodeGen of ilp32e/lp64e was supported experimentally.
 
 - Default ABI with F but without D was changed to ilp32f for RV32 and to lp64f
   for RV64.
@@ -1124,6 +1136,9 @@ AST Matchers
 - Add ``convertVectorExpr``.
 - Add ``dependentSizedExtVectorType``.
 - Add ``macroQualifiedType``.
+- Add ``CXXFoldExpr`` related matchers: ``cxxFoldExpr``, ``callee``,
+  ``hasInit``, ``hasPattern``, ``isRightFold``, ``isLeftFold``,
+  ``isUnaryFold``, ``isBinaryFold``, ``hasOperator``, ``hasLHS``, ``hasRHS``, ``hasEitherOperand``.
 
 clang-format
 ------------
