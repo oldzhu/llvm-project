@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Lower/CallInterface.h"
+#include "flang/Common/Fortran.h"
 #include "flang/Evaluate/fold.h"
 #include "flang/Lower/Bridge.h"
 #include "flang/Lower/Mangler.h"
@@ -559,6 +560,12 @@ void Fortran::lower::CallInterface<T>::declare() {
           func.setArgAttrs(placeHolder.index(), placeHolder.value().attributes);
       side().setFuncAttrs(func);
     }
+    if (characteristic && characteristic->cudaSubprogramAttrs) {
+      func.getOperation()->setAttr(
+          fir::getCUDAAttrName(),
+          fir::getCUDAProcAttribute(func.getContext(),
+                                    *characteristic->cudaSubprogramAttrs));
+    }
   }
 }
 
@@ -916,31 +923,6 @@ private:
     }
   }
 
-  // Define when an explicit argument must be passed in a fir.box.
-  bool dummyRequiresBox(
-      const Fortran::evaluate::characteristics::DummyDataObject &obj,
-      bool isBindC) {
-    using ShapeAttr = Fortran::evaluate::characteristics::TypeAndShape::Attr;
-    using ShapeAttrs = Fortran::evaluate::characteristics::TypeAndShape::Attrs;
-    constexpr ShapeAttrs shapeRequiringBox = {
-        ShapeAttr::AssumedShape, ShapeAttr::DeferredShape,
-        ShapeAttr::AssumedRank, ShapeAttr::Coarray};
-    if ((obj.type.attrs() & shapeRequiringBox).any())
-      // Need to pass shape/coshape info in fir.box.
-      return true;
-    if (obj.type.type().IsPolymorphic() && !obj.type.type().IsAssumedType())
-      // Need to pass dynamic type info in fir.box.
-      return true;
-    if (const Fortran::semantics::DerivedTypeSpec *derived =
-            Fortran::evaluate::GetDerivedTypeSpec(obj.type.type()))
-      if (const Fortran::semantics::Scope *scope = derived->scope())
-        // Need to pass length type parameters in fir.box if any.
-        return scope->IsDerivedTypeWithLengthParameter();
-    if (isBindC && obj.type.type().IsAssumedLengthCharacter())
-      return true; // Fortran 2018 18.3.6 point 2 (5)
-    return false;
-  }
-
   mlir::Type
   translateDynamicType(const Fortran::evaluate::DynamicType &dynamicType) {
     Fortran::common::TypeCategory cat = dynamicType.category();
@@ -997,7 +979,7 @@ private:
     if (obj.cudaDataAttr)
       attrs.emplace_back(
           mlir::StringAttr::get(&mlirContext, fir::getCUDAAttrName()),
-          fir::getCUDAAttribute(&mlirContext, obj.cudaDataAttr));
+          fir::getCUDADataAttribute(&mlirContext, obj.cudaDataAttr));
 
     // TODO: intents that require special care (e.g finalization)
 
@@ -1027,7 +1009,7 @@ private:
       addFirOperand(boxRefType, nextPassedArgPosition(), Property::MutableBox,
                     attrs);
       addPassedArg(PassEntityBy::MutableBox, entity, characteristics);
-    } else if (dummyRequiresBox(obj, isBindC)) {
+    } else if (obj.IsPassedByDescriptor(isBindC)) {
       // Pass as fir.box or fir.class
       if (isValueAttr &&
           !getConverter().getLoweringOptions().getLowerToHighLevelFIR())
