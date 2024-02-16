@@ -435,9 +435,23 @@ if(LIBC_COMPILER_HAS_FLOAT128)
     libc.src.math.fmaxf128
     libc.src.math.fminf128
     libc.src.math.frexpf128
+    libc.src.math.ldexpf128
     libc.src.math.roundf128
     libc.src.math.sqrtf128
     libc.src.math.truncf128
+  )
+endif()
+
+if(LIBC_COMPILER_HAS_FIXED_POINT)
+  list(APPEND TARGET_LIBM_ENTRYPOINTS
+    # stdfix.h _Fract and _Accum entrypoints
+    # Re-enable the entry points once #80757 is merged.
+    # libc.src.stdfix.abshk
+    # libc.src.stdfix.abshr
+    # libc.src.stdfix.absk
+    # libc.src.stdfix.absr
+    # libc.src.stdfix.abslk
+    # libc.src.stdfix.abslr
   )
 endif()
 
