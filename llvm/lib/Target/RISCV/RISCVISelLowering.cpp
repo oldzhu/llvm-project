@@ -641,7 +641,10 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
 
   if (Subtarget.hasStdExtA()) {
     setMaxAtomicSizeInBitsSupported(Subtarget.getXLen());
-    setMinCmpXchgSizeInBits(32);
+    if (Subtarget.hasStdExtZabha() && Subtarget.hasStdExtZacas())
+      setMinCmpXchgSizeInBits(8);
+    else
+      setMinCmpXchgSizeInBits(32);
   } else if (Subtarget.hasForcedAtomics()) {
     setMaxAtomicSizeInBitsSupported(Subtarget.getXLen());
   } else {
@@ -13371,7 +13374,7 @@ struct NodeExtensionHelper {
     unsigned ExtOpc = *SExt ? RISCVISD::VSEXT_VL : RISCVISD::VZEXT_VL;
 
     // If we need an extension, we should be changing the type.
-    SDLoc DL(Root);
+    SDLoc DL(OrigOperand);
     auto [Mask, VL] = getMaskAndVL(Root, DAG, Subtarget);
     switch (OrigOperand.getOpcode()) {
     case ISD::ZERO_EXTEND:
@@ -19731,12 +19734,16 @@ RISCVTargetLowering::shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const {
     return AtomicExpansionKind::None;
 
   unsigned Size = AI->getType()->getPrimitiveSizeInBits();
-  if (Size == 8 || Size == 16)
-    return AtomicExpansionKind::MaskedIntrinsic;
+  if (AI->getOperation() == AtomicRMWInst::Nand) {
+    if (Subtarget.hasStdExtZacas() &&
+        (Size >= 32 || Subtarget.hasStdExtZabha()))
+      return AtomicExpansionKind::CmpXChg;
+    if (Size < 32)
+      return AtomicExpansionKind::MaskedIntrinsic;
+  }
 
-  if (Subtarget.hasStdExtZacas() && AI->getOperation() == AtomicRMWInst::Nand &&
-      (Size == Subtarget.getXLen() || Size == 32))
-    return AtomicExpansionKind::CmpXChg;
+  if (Size < 32 && !Subtarget.hasStdExtZabha())
+    return AtomicExpansionKind::MaskedIntrinsic;
 
   return AtomicExpansionKind::None;
 }
@@ -19859,7 +19866,8 @@ RISCVTargetLowering::shouldExpandAtomicCmpXchgInIR(
     return AtomicExpansionKind::None;
 
   unsigned Size = CI->getCompareOperand()->getType()->getPrimitiveSizeInBits();
-  if (Size == 8 || Size == 16)
+  if (!(Subtarget.hasStdExtZabha() && Subtarget.hasStdExtZacas()) &&
+      (Size == 8 || Size == 16))
     return AtomicExpansionKind::MaskedIntrinsic;
   return AtomicExpansionKind::None;
 }
