@@ -643,9 +643,8 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
   // It seems that the 'e' option is completely ignored for dynamic executables
   // (the default), and with static executables, the last one wins, as expected.
-  Args.addAllArgs(CmdArgs,
-                  {options::OPT_d_Flag, options::OPT_s, options::OPT_t,
-                   options::OPT_Z_Flag, options::OPT_u_Group, options::OPT_r});
+  Args.addAllArgs(CmdArgs, {options::OPT_d_Flag, options::OPT_s, options::OPT_t,
+                            options::OPT_Z_Flag, options::OPT_u_Group});
 
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
@@ -926,9 +925,7 @@ void darwin::VerifyDebug::ConstructJob(Compilation &C, const JobAction &JA,
 MachO::MachO(const Driver &D, const llvm::Triple &Triple, const ArgList &Args)
     : ToolChain(D, Triple, Args) {
   // We expect 'as', 'ld', etc. to be adjacent to our install dir.
-  getProgramPaths().push_back(getDriver().getInstalledDir());
-  if (getDriver().getInstalledDir() != getDriver().Dir)
-    getProgramPaths().push_back(getDriver().Dir);
+  getProgramPaths().push_back(getDriver().Dir);
 }
 
 /// Darwin - Darwin tool chain for i386 and x86_64.
@@ -2535,7 +2532,7 @@ void DarwinClang::AddClangCXXStdlibIncludeArgs(
     // Note that InstallBin can be relative, so we use '..' instead of
     // parent_path.
     llvm::SmallString<128> InstallBin =
-        llvm::StringRef(getDriver().getInstalledDir()); // <install>/bin
+        llvm::StringRef(getDriver().Dir); // <install>/bin
     llvm::sys::path::append(InstallBin, "..", "include", "c++", "v1");
     if (getVFS().exists(InstallBin)) {
       addSystemInclude(DriverArgs, CC1Args, InstallBin);
@@ -2546,7 +2543,7 @@ void DarwinClang::AddClangCXXStdlibIncludeArgs(
     }
 
     // (2) Check for the folder where the executable is located, if different.
-    if (getDriver().getInstalledDir() != getDriver().Dir) {
+    if (getDriver().Dir != getDriver().Dir) {
       InstallBin = llvm::StringRef(getDriver().Dir);
       llvm::sys::path::append(InstallBin, "..", "include", "c++", "v1");
       if (getVFS().exists(InstallBin)) {
