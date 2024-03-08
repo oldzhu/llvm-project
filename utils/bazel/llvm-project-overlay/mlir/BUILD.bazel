@@ -542,6 +542,7 @@ mlir_c_api_cc_library(
     includes = ["include"],
     deps = [
         ":LLVMDialect",
+        "//llvm:Support",
     ],
 )
 
@@ -4014,6 +4015,7 @@ cc_library(
         ":AffineToStandard",
         ":ArithToAMDGPU",
         ":ArithToArmSME",
+        ":ArithToEmitC",
         ":ArithToLLVM",
         ":ArithToSPIRV",
         ":ArmNeon2dToIntr",
@@ -6182,9 +6184,6 @@ cc_library(
         ":NVVMToLLVMIRTranslation",
         ":TargetLLVM",
         ":ToLLVMIRTranslation",
-        "@cuda//:cuda_headers",
-        "@cuda//:cusparse_static",
-        "@cuda//:libcuda",
         ":config",
         "//llvm:NVPTXCodeGen",
         "//llvm:Support",
@@ -8160,6 +8159,32 @@ cc_library(
         ":ConversionPassIncGen",
         ":IR",
         ":Pass",
+        ":Transforms",
+        "//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "ArithToEmitC",
+    srcs = glob([
+        "lib/Conversion/ArithToEmitC/*.cpp",
+        "lib/Conversion/ArithToEmitC/*.h",
+    ]),
+    hdrs = glob([
+        "include/mlir/Conversion/ArithToEmitC/*.h",
+    ]),
+    includes = [
+        "include",
+        "lib/Conversion/ArithToEmitC",
+    ],
+    deps = [
+        ":ArithDialect",
+        ":ConversionPassIncGen",
+        ":EmitCDialect",
+        ":IR",
+        ":Pass",
+        ":Support",
+        ":TransformUtils",
         ":Transforms",
         "//llvm:Support",
     ],
@@ -10816,6 +10841,7 @@ cc_library(
         ":MemRefDialect",
         ":Parser",
         ":SCFDialect",
+        ":MeshShardingInterface",
         ":SideEffectInterfaces",
         ":SparseTensorDialect",
         ":Support",
@@ -10969,10 +10995,13 @@ cc_library(
         ":MathDialect",
         ":MemRefDialect",
         ":MemRefTransforms",
+        ":MeshDialect",
+        ":MeshTransforms",
         ":Pass",
         ":SCFDialect",
         ":SCFTransforms",
         ":SCFUtils",
+        ":MeshShardingInterface",
         ":SparseTensorDialect",
         ":SubsetOpInterface",
         ":Support",
