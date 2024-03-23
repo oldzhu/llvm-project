@@ -2031,7 +2031,8 @@ SDValue SelectionDAG::getStepVector(const SDLoc &DL, EVT ResVT) {
   return getStepVector(DL, ResVT, One);
 }
 
-SDValue SelectionDAG::getStepVector(const SDLoc &DL, EVT ResVT, APInt StepVal) {
+SDValue SelectionDAG::getStepVector(const SDLoc &DL, EVT ResVT,
+                                    const APInt &StepVal) {
   assert(ResVT.getScalarSizeInBits() == StepVal.getBitWidth());
   if (ResVT.isScalableVector())
     return getNode(
@@ -5042,8 +5043,9 @@ bool SelectionDAG::isGuaranteedNotToBeUndefOrPoison(SDValue Op,
 
   // If Op can't create undef/poison and none of its operands are undef/poison
   // then Op is never undef/poison.
-  // NOTE: TargetNodes should handle this in themselves in
-  // isGuaranteedNotToBeUndefOrPoisonForTargetNode.
+  // NOTE: TargetNodes can handle this in themselves in
+  // isGuaranteedNotToBeUndefOrPoisonForTargetNode or let
+  // TargetLowering::isGuaranteedNotToBeUndefOrPoisonForTargetNode handle it.
   return !canCreateUndefOrPoison(Op, PoisonOnly, /*ConsiderFlags*/ true,
                                  Depth) &&
          all_of(Op->ops(), [&](SDValue V) {
