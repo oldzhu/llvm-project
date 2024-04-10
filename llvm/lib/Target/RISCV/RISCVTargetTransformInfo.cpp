@@ -329,7 +329,8 @@ InstructionCost RISCVTTIImpl::getShuffleCost(TTI::ShuffleKind Kind,
                                              VectorType *Tp, ArrayRef<int> Mask,
                                              TTI::TargetCostKind CostKind,
                                              int Index, VectorType *SubTp,
-                                             ArrayRef<const Value *> Args) {
+                                             ArrayRef<const Value *> Args,
+                                             const Instruction *CxtI) {
   Kind = improveShuffleKindFromMask(Kind, Mask, Tp, Index, SubTp);
 
   std::pair<InstructionCost, MVT> LT = getTypeLegalizationCost(Tp);
@@ -860,6 +861,21 @@ RISCVTTIImpl::getIntrinsicInstrCost(const IntrinsicCostAttributes &ICA,
       // vrsub.vi v10, v8, 0
       // vmax.vv v8, v8, v10
       return LT.first * 2;
+    }
+    break;
+  }
+  case Intrinsic::get_active_lane_mask: {
+    if (ST->hasVInstructions()) {
+      Type *ExpRetTy = VectorType::get(
+          ICA.getArgTypes()[0], cast<VectorType>(RetTy)->getElementCount());
+      auto LT = getTypeLegalizationCost(ExpRetTy);
+
+      // vid.v   v8  // considered hoisted
+      // vsaddu.vx   v8, v8, a0
+      // vmsltu.vx   v0, v8, a1
+      return LT.first *
+             getRISCVInstructionCost({RISCV::VSADDU_VX, RISCV::VMSLTU_VX},
+                                     LT.second, CostKind);
     }
     break;
   }
