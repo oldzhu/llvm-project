@@ -249,8 +249,6 @@ public:
     MCObjectStreamer::emitFill(NumBytes, FillValue, Loc);
   }
 
-  void finishImpl() override;
-
 private:
   enum ElfMappingSymbol {
     EMS_None,
@@ -286,28 +284,6 @@ private:
   DenseMap<const MCSection *, ElfMappingSymbol> LastMappingSymbols;
   ElfMappingSymbol LastEMS;
 };
-
-void AArch64ELFStreamer::finishImpl() {
-  MCContext &Ctx = getContext();
-  auto &Asm = getAssembler();
-  MCSectionELF *MemtagSec = nullptr;
-  const auto *Zero = MCConstantExpr::create(0, Ctx);
-  for (const MCSymbol &Symbol : Asm.symbols()) {
-    const auto &Sym = cast<MCSymbolELF>(Symbol);
-    if (!Sym.isMemtag())
-      continue;
-    if (!MemtagSec) {
-      MemtagSec = Ctx.getELFSection(".memtag.globals.static",
-                                    ELF::SHT_AARCH64_MEMTAG_GLOBALS_STATIC, 0);
-      switchSection(MemtagSec);
-    }
-    auto *SRE = MCSymbolRefExpr::create(&Sym, MCSymbolRefExpr::VK_None, Ctx);
-    (void)MCObjectStreamer::emitRelocDirective(
-        *Zero, "BFD_RELOC_NONE", SRE, SMLoc(), *Ctx.getSubtargetInfo());
-  }
-  MCELFStreamer::finishImpl();
-}
-
 } // end anonymous namespace
 
 AArch64ELFStreamer &AArch64TargetELFStreamer::getStreamer() {
@@ -321,6 +297,37 @@ void AArch64TargetELFStreamer::emitInst(uint32_t Inst) {
 void AArch64TargetELFStreamer::emitDirectiveVariantPCS(MCSymbol *Symbol) {
   getStreamer().getAssembler().registerSymbol(*Symbol);
   cast<MCSymbolELF>(Symbol)->setOther(ELF::STO_AARCH64_VARIANT_PCS);
+}
+
+void AArch64TargetELFStreamer::finish() {
+  AArch64TargetStreamer::finish();
+  AArch64ELFStreamer &S = getStreamer();
+  MCContext &Ctx = S.getContext();
+  auto &Asm = S.getAssembler();
+  MCSectionELF *MemtagSec = nullptr;
+  for (const MCSymbol &Symbol : Asm.symbols()) {
+    const auto &Sym = cast<MCSymbolELF>(Symbol);
+    if (Sym.isMemtag()) {
+      MemtagSec = Ctx.getELFSection(".memtag.globals.static",
+                                    ELF::SHT_AARCH64_MEMTAG_GLOBALS_STATIC, 0);
+      break;
+    }
+  }
+  if (!MemtagSec)
+    return;
+
+  // switchSection registers the section symbol and invalidates symbols(). We
+  // need a separate symbols() loop.
+  S.switchSection(MemtagSec);
+  const auto *Zero = MCConstantExpr::create(0, Ctx);
+  for (const MCSymbol &Symbol : Asm.symbols()) {
+    const auto &Sym = cast<MCSymbolELF>(Symbol);
+    if (!Sym.isMemtag())
+      continue;
+    auto *SRE = MCSymbolRefExpr::create(&Sym, MCSymbolRefExpr::VK_None, Ctx);
+    (void)S.emitRelocDirective(*Zero, "BFD_RELOC_NONE", SRE, SMLoc(),
+                               *Ctx.getSubtargetInfo());
+  }
 }
 
 MCTargetStreamer *
