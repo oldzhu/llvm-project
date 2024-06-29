@@ -1276,6 +1276,10 @@ Error BinaryFunction::disassemble() {
       }
     }
 
+    bool IsUnsupported = BC.MIB->isUnsupportedInstruction(Instruction);
+    if (IsUnsupported)
+      setIgnored();
+
     if (MIB->isBranch(Instruction) || MIB->isCall(Instruction)) {
       uint64_t TargetAddress = 0;
       if (MIB->evaluateBranch(Instruction, AbsoluteInstrAddr, Size,
@@ -1289,12 +1293,10 @@ Error BinaryFunction::disassemble() {
         const bool IsCondBranch = MIB->isConditionalBranch(Instruction);
         MCSymbol *TargetSymbol = nullptr;
 
-        if (!BC.MIB->isReversibleBranch(Instruction)) {
-          setIgnored();
-          if (BinaryFunction *TargetFunc =
+        if (IsUnsupported)
+          if (auto *TargetFunc =
                   BC.getBinaryFunctionContainingAddress(TargetAddress))
             TargetFunc->setIgnored();
-        }
 
         if (IsCall && containsAddress(TargetAddress)) {
           if (TargetAddress == getAddress()) {
@@ -4470,6 +4472,18 @@ MCInst *BinaryFunction::getInstructionAtOffset(uint64_t Offset) {
   } else {
     llvm_unreachable("invalid CFG state to use getInstructionAtOffset()");
   }
+}
+
+MCInst *BinaryFunction::getInstructionContainingOffset(uint64_t Offset) {
+  assert(CurrentState == State::Disassembled && "Wrong function state");
+
+  if (Offset > Size)
+    return nullptr;
+
+  auto II = Instructions.upper_bound(Offset);
+  assert(II != Instructions.begin() && "First instruction not at offset 0");
+  --II;
+  return &II->second;
 }
 
 void BinaryFunction::printLoopInfo(raw_ostream &OS) const {
