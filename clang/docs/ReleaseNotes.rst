@@ -306,6 +306,9 @@ Resolutions to C++ Defect Reports
 - Clang now considers ``noexcept(typeid(expr))`` more carefully, instead of always assuming that ``std::bad_typeid`` can be thrown.
   (`CWG2191: Incorrect result for noexcept(typeid(v)) <https://cplusplus.github.io/CWG/issues/2191.html>`_).
 
+- Clang now correctly implements lookup for the terminal name of a member-qualified nested-name-specifier.
+  (`CWG1835: Dependent member lookup before < <https://cplusplus.github.io/CWG/issues/1835.html>`_).
+
 C Language Changes
 ------------------
 
@@ -347,6 +350,9 @@ C23 Feature Support
   freestanding implementation; these macros were defined in ``<math.h>`` in C99
   but C23 added them to ``<float.h>`` in
   `WG14 N2848 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2848.pdf>`_.
+
+- Clang now supports `N3017 <https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3017.htm>`_
+  ``#embed`` - a scannable, tooling-friendly binary resource inclusion mechanism.
 
 Non-comprehensive list of changes in this release
 -------------------------------------------------
@@ -441,6 +447,11 @@ New Compiler Flags
 
 - ``-Wc++2c-compat`` group was added to help migrating existing codebases
   to upcoming C++26.
+
+- ``-fdisable-block-signature-string`` instructs clang not to emit the signature
+  string for blocks. Disabling the string can potentially break existing code
+  that relies on it. Users should carefully consider this possibiilty when using
+  the flag.
 
 Deprecated Compiler Flags
 -------------------------
@@ -546,6 +557,19 @@ Attribute Changes in Clang
        size_t count;
      };
 
+- The attributes ``sized_by``, ``counted_by_or_null`` and ``sized_by_or_null```
+  have been added as variants on ``counted_by``, each with slightly different semantics.
+  ``sized_by`` takes a byte size parameter instead of an element count, allowing pointees
+  with unknown size. The ``counted_by_or_null`` and ``sized_by_or_null`` variants are equivalent
+  to their base variants, except the pointer can be null regardless of count/size value.
+  If the pointer is null the size is effectively 0. ``sized_by_or_null`` is needed to properly
+  annotate allocator functions like ``malloc`` that return a buffer of a given byte size, but can
+  also return null.
+
+- The ``guarded_by``, ``pt_guarded_by``, ``acquired_after``, ``acquired_before``
+  attributes now support referencing struct members in C. The arguments are also
+  now late parsed when ``-fexperimental-late-parse-attributes`` is passed like
+  for ``counted_by``.
 
 - Introduced new function type attributes ``[[clang::nonblocking]]``, ``[[clang::nonallocating]]``,
   ``[[clang::blocking]]``, and ``[[clang::allocating]]``, with GNU-style variants as well.
@@ -959,6 +983,7 @@ Bug Fixes to C++ Support
 - Fix a crash caused by improper use of ``__array_extent``. (#GH80474)
 - Fixed several bugs in capturing variables within unevaluated contexts. (#GH63845), (#GH67260), (#GH69307),
   (#GH88081), (#GH89496), (#GH90669) and (#GH91633).
+- Fixed a crash in constraint instantiation under nested lambdas with dependent parameters.
 - Fixed handling of brace ellison when building deduction guides. (#GH64625), (#GH83368).
 - Clang now instantiates local constexpr functions eagerly for constant evaluators. (#GH35052), (#GH94849)
 - Fixed a failed assertion when attempting to convert an integer representing the difference
@@ -1084,6 +1109,7 @@ RISC-V Support
 
 - ``__attribute__((rvv_vector_bits(N)))`` is now supported for RVV vbool*_t types.
 - Profile names in ``-march`` option are now supported.
+- Passing empty structs/unions as arguments in C++ is now handled correctly. The behavior is similar to GCC's.
 
 CUDA/HIP Language Changes
 ^^^^^^^^^^^^^^^^^^^^^^^^^

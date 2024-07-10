@@ -1078,7 +1078,7 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
         setOperationAction({ISD::CONCAT_VECTORS, ISD::INSERT_SUBVECTOR,
                             ISD::EXTRACT_SUBVECTOR},
                            VT, Custom);
-        if (Subtarget.hasStdExtZfhminOrZhinxmin())
+        if (Subtarget.hasStdExtZfhmin())
           setOperationAction(ISD::SPLAT_VECTOR, VT, Custom);
         // load/store
         setOperationAction({ISD::LOAD, ISD::STORE}, VT, Custom);
@@ -1327,12 +1327,14 @@ RISCVTargetLowering::RISCVTargetLowering(const TargetMachine &TM,
                               ISD::VP_SINT_TO_FP, ISD::VP_UINT_TO_FP},
                              VT, Custom);
           setOperationAction(ISD::VECTOR_SHUFFLE, VT, Custom);
-          // FIXME: We should prefer BUILD_VECTOR over SPLAT_VECTOR.
-          setOperationAction(ISD::SPLAT_VECTOR, VT, Custom);
-          // We need to custom legalize f16 build vectors if Zfhmin isn't
-          // available.
-          if (!Subtarget.hasStdExtZfhminOrZhinxmin())
+          if (Subtarget.hasStdExtZfhmin()) {
+            // FIXME: We should prefer BUILD_VECTOR over SPLAT_VECTOR.
+            setOperationAction(ISD::SPLAT_VECTOR, VT, Custom);
+          } else {
+            // We need to custom legalize f16 build vectors if Zfhmin isn't
+            // available.
             setOperationAction(ISD::BUILD_VECTOR, MVT::f16, Custom);
+          }
           MVT F32VecVT = MVT::getVectorVT(MVT::f32, VT.getVectorElementCount());
           // Don't promote f16 vector operations to f32 if f32 vector type is
           // not legal.
@@ -4001,7 +4003,7 @@ static SDValue lowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
 
   // If we don't have scalar f16, we need to bitcast to an i16 vector.
   if (VT.getVectorElementType() == MVT::f16 &&
-      !Subtarget.hasStdExtZfhminOrZhinxmin())
+      !Subtarget.hasStdExtZfhmin())
     return lowerBUILD_VECTORvXf16(Op, DAG);
 
   if (ISD::isBuildVectorOfConstantSDNodes(Op.getNode()) ||
@@ -16205,17 +16207,9 @@ static SDValue performCONCAT_VECTORSCombine(SDNode *N, SelectionDAG &DAG,
   if (MustNegateStride)
     Stride = DAG.getNegative(Stride, DL, Stride.getValueType());
 
-  SDVTList VTs = DAG.getVTList({WideVecVT, MVT::Other});
-  SDValue IntID =
-    DAG.getTargetConstant(Intrinsic::riscv_masked_strided_load, DL,
-                          Subtarget.getXLenVT());
-
   SDValue AllOneMask =
     DAG.getSplat(WideVecVT.changeVectorElementType(MVT::i1), DL,
                  DAG.getConstant(1, DL, MVT::i1));
-
-  SDValue Ops[] = {BaseLd->getChain(),   IntID,  DAG.getUNDEF(WideVecVT),
-                   BaseLd->getBasePtr(), Stride, AllOneMask};
 
   uint64_t MemSize;
   if (auto *ConstStride = dyn_cast<ConstantSDNode>(Stride);
@@ -16232,8 +16226,11 @@ static SDValue performCONCAT_VECTORSCombine(SDNode *N, SelectionDAG &DAG,
       BaseLd->getPointerInfo(), BaseLd->getMemOperand()->getFlags(), MemSize,
       Align);
 
-  SDValue StridedLoad = DAG.getMemIntrinsicNode(ISD::INTRINSIC_W_CHAIN, DL, VTs,
-                                                Ops, WideVecVT, MMO);
+  SDValue StridedLoad = DAG.getStridedLoadVP(
+      WideVecVT, DL, BaseLd->getChain(), BaseLd->getBasePtr(), Stride,
+      AllOneMask,
+      DAG.getConstant(N->getNumOperands(), DL, Subtarget.getXLenVT()), MMO);
+
   for (SDValue Ld : N->ops())
     DAG.makeEquivalentMemoryOrdering(cast<LoadSDNode>(Ld), StridedLoad);
 
@@ -17060,15 +17057,16 @@ SDValue RISCVTargetLowering::PerformDAGCombine(SDNode *N,
         SDValue BasePtr = DAG.getNode(ISD::ADD, DL, PtrVT, MGN->getBasePtr(),
                                       DAG.getConstant(Addend, DL, PtrVT));
 
-        SDVTList VTs = DAG.getVTList({VT, MVT::Other});
-        SDValue IntID =
-          DAG.getTargetConstant(Intrinsic::riscv_masked_strided_load, DL,
-                                XLenVT);
-        SDValue Ops[] =
-          {MGN->getChain(), IntID, MGN->getPassThru(), BasePtr,
-           DAG.getConstant(StepNumerator, DL, XLenVT), MGN->getMask()};
-        return DAG.getMemIntrinsicNode(ISD::INTRINSIC_W_CHAIN, DL, VTs,
-                                       Ops, VT, MGN->getMemOperand());
+        SDValue EVL = DAG.getElementCount(DL, Subtarget.getXLenVT(),
+                                          VT.getVectorElementCount());
+        SDValue StridedLoad =
+            DAG.getStridedLoadVP(VT, DL, MGN->getChain(), BasePtr,
+                                 DAG.getConstant(StepNumerator, DL, XLenVT),
+                                 MGN->getMask(), EVL, MGN->getMemOperand());
+        SDValue VPSelect = DAG.getNode(ISD::VP_SELECT, DL, VT, MGN->getMask(),
+                                       StridedLoad, MGN->getPassThru(), EVL);
+        return DAG.getMergeValues({VPSelect, SDValue(StridedLoad.getNode(), 1)},
+                                  DL);
       }
     }
 
