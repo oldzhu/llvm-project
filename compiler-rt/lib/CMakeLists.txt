@@ -38,8 +38,10 @@ endif()
 if(COMPILER_RT_BUILD_SANITIZERS)
   if(COMPILER_RT_HAS_SANITIZER_COMMON)
     add_subdirectory(stats)
+    # Contains RTLSanCommon used even without COMPILER_RT_HAS_LSAN.
     add_subdirectory(lsan)
-    add_subdirectory(ubsan)
+    # Contains RTUbsan used even without COMPILER_RT_HAS_UBSAN.
+    add_subdirectory(lsan)
   endif()
 
   foreach(sanitizer ${COMPILER_RT_SANITIZERS_TO_BUILD})
@@ -47,11 +49,11 @@ if(COMPILER_RT_BUILD_SANITIZERS)
   endforeach()
 endif()
 
-if(COMPILER_RT_BUILD_PROFILE AND COMPILER_RT_HAS_PROFILE)
+if(COMPILER_RT_BUILD_PROFILE)
   compiler_rt_build_runtime(profile)
 endif()
 
-if(COMPILER_RT_BUILD_CTX_PROFILE AND COMPILER_RT_HAS_CTX_PROFILE)
+if(COMPILER_RT_BUILD_CTX_PROFILE)
   compiler_rt_build_runtime(ctx_profile)
 endif()
 
