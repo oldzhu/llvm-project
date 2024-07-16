@@ -1038,6 +1038,8 @@ Bug Fixes to C++ Support
 - Fix a crash when parsing an invalid type-requirement in a requires expression. (#GH51868)
 - Fix parsing of built-in type-traits such as ``__is_pointer`` in libstdc++ headers. (#GH95598)
 - Fixed failed assertion when resolving context of defaulted comparison method outside of struct. (#GH96043).
+- Clang now diagnoses explicit object parameters in member pointers and other contexts where they should not appear.
+  Fixes (#GH85992).
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1189,6 +1191,8 @@ DWARF Support in Clang
 Floating Point Support in Clang
 -------------------------------
 
+- Add ``__builtin__fmaf16`` builtin for floating point types.
+
 Fixed Point Support in Clang
 ----------------------------
 
@@ -1307,6 +1311,8 @@ Python Binding Changes
 - Exposed `CXRewriter` API as `class Rewriter`.
 - Add some missing kinds from Index.h (CursorKind: 149-156, 272-320, 420-437.
   TemplateArgumentKind: 5-9. TypeKind: 161-175 and 178).
+- Add support for retrieving binary operator information through
+  Cursor.binary_operator().
 
 OpenMP Support
 --------------
