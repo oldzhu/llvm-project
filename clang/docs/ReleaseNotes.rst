@@ -435,6 +435,10 @@ Non-comprehensive list of changes in this release
 - Added support for ``TypeLoc::dump()`` for easier debugging, and improved
   textual and JSON dumping for various ``TypeLoc``-related nodes.
 
+- Clang can now emit distinct type-based alias analysis tags for incompatible
+  pointers, enabling more powerful alias analysis when accessing pointer types.
+  The new behavior can be enabled using ``-fpointer-tbaa``.
+
 New Compiler Flags
 ------------------
 - ``-fsanitize=implicit-bitfield-conversion`` checks implicit truncation and
@@ -476,6 +480,9 @@ New Compiler Flags
 
 - For the ARM target, added ``-Warm-interrupt-vfp-clobber`` that will emit a
   diagnostic when an interrupt handler is declared and VFP is enabled.
+
+- ``-fpointer-tbaa`` enables emission of distinct type-based alias
+  analysis tags for incompatible pointers.
 
 Deprecated Compiler Flags
 -------------------------
@@ -743,6 +750,9 @@ Improvements to Clang's time-trace
 - Clang now specifies that using ``auto`` in a lambda parameter is a C++14 extension when
   appropriate. (`#46059: <https://github.com/llvm/llvm-project/issues/46059>`_).
 
+- Clang now adds source file infomation for template instantiations as ``event["args"]["filename"]``. This
+  added behind an option ``-ftime-trace-verbose``. This is expected to increase the size of trace by 2-3 times.
+
 Improvements to Coverage Mapping
 --------------------------------
 
@@ -856,6 +866,9 @@ Bug Fixes in This Version
   types by ensuring they are complete and instantiating them if needed. Fixes (#GH95311).
 
 - ``typeof_unqual`` now properly removes type qualifiers from arrays and their element types. (#GH92667)
+
+- Fixed an assertion failure when a template non-type parameter contains
+  an invalid expression.
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
