@@ -23,6 +23,7 @@ protected:
     // The remaining content to parse and the filename.
     StringRef s, filename;
     const char *begin = nullptr;
+    size_t lineNumber = 1;
     Buffer() = default;
     Buffer(MemoryBufferRef mb)
         : s(mb.getBuffer()), filename(mb.getBufferIdentifier()),
@@ -32,12 +33,19 @@ protected:
   Buffer curBuf;
   SmallVector<Buffer, 0> buffers;
 
+  struct Token {
+    StringRef str;
+    explicit operator bool() const { return !str.empty(); }
+    operator StringRef() const { return str; }
+  };
+
   // The token before the last next().
   StringRef prevTok;
   // Rules for what is a token are different when we are in an expression.
   // curTok holds the cached return value of peek() and is invalid when the
   // expression state changes.
   StringRef curTok;
+  size_t prevTokLine = 1;
   // The inExpr state when curTok is cached.
   bool curTokState = false;
   bool eof = false;
@@ -54,18 +62,15 @@ public:
   void skip();
   bool consume(StringRef tok);
   void expect(StringRef expect);
+  Token till(StringRef tok);
   std::string getCurrentLocation();
   MemoryBufferRef getCurrentMB();
 
   std::vector<MemoryBufferRef> mbs;
   bool inExpr = false;
 
-  size_t lastLineNumber = 0;
-  size_t lastLineNumberOffset = 0;
-
 private:
   StringRef getLine();
-  size_t getLineNumber();
   size_t getColumnNumber();
 };
 
