@@ -10,6 +10,7 @@
 #define LLD_ELF_SCRIPT_LEXER_H
 
 #include "lld/Common/LLVM.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MemoryBufferRef.h"
@@ -24,14 +25,19 @@ protected:
     StringRef s, filename;
     const char *begin = nullptr;
     size_t lineNumber = 1;
+    // True if the script is opened as an absolute path under the --sysroot
+    // directory.
+    bool isUnderSysroot = false;
+
     Buffer() = default;
-    Buffer(MemoryBufferRef mb)
-        : s(mb.getBuffer()), filename(mb.getBufferIdentifier()),
-          begin(mb.getBufferStart()) {}
+    Buffer(MemoryBufferRef mb);
   };
   // The current buffer and parent buffers due to INCLUDE.
   Buffer curBuf;
   SmallVector<Buffer, 0> buffers;
+
+  // Used to detect INCLUDE() cycles.
+  llvm::DenseSet<StringRef> activeFilenames;
 
   struct Token {
     StringRef str;
