@@ -75,6 +75,9 @@ sections with improvements to Clang's support for those languages.
 
 C++ Language Changes
 --------------------
+- Allow single element access of GCC vector/ext_vector_type object to be 
+  constant expression. Supports the `V.xyzw` syntax and other tidbits 
+  as seen in OpenCL. Selecting multiple elements is left as a future work.
 
 C++17 Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
@@ -106,6 +109,9 @@ C2y Feature Support
 
 C23 Feature Support
 ^^^^^^^^^^^^^^^^^^^
+
+Non-comprehensive list of changes in this release
+-------------------------------------------------
 
 New Compiler Flags
 ------------------
@@ -153,6 +159,8 @@ Improvements to Clang's diagnostics
 - Clang now does a better job preserving the template arguments as written when specializing concepts.
 - Clang now always preserves the template arguments as written used
   to specialize template type aliases.
+
+- Clang now diagnoses the use of ``main`` in an ``extern`` context as invalid according to [basic.start.main] p3. Fixes #GH101512.
 
 Improvements to Clang's time-trace
 ----------------------------------
