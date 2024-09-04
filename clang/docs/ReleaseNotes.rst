@@ -266,6 +266,8 @@ Improvements to Clang's diagnostics
   compilation speed with modules. This warning is disabled by default and it needs
   to be explicitly enabled or by ``-Weverything``.
 
+- Improved diagnostic when trying to overload a function in an ``extern "C"`` context. (#GH80235)
+
 Improvements to Clang's time-trace
 ----------------------------------
 
@@ -339,6 +341,7 @@ Bug Fixes to C++ Support
 - Template parameter names are considered in the name lookup of out-of-line class template
   specialization right before its declaration context. (#GH64082)
 - Fixed a constraint comparison bug for friend declarations. (#GH78101)
+- Fix handling of ``_`` as the name of a lambda's init capture variable. (#GH107024)
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
