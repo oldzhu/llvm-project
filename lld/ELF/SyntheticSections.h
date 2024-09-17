@@ -1479,8 +1479,6 @@ inline Partition &SectionBase::getPartition() const {
   return ctx.partitions[partition - 1];
 }
 
-#define in ctx.sec
-
 } // namespace lld::elf
 
 #endif
