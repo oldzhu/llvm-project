@@ -144,6 +144,9 @@ C++ Language Changes
 
 - Add ``__builtin_elementwise_fmod`` builtin for floating point types only.
 
+- Add ``__builtin_elementwise_minimum`` and ``__builtin_elementwise_maximum``
+  builtin for floating point types only.
+
 - The builtin type alias ``__builtin_common_type`` has been added to improve the
   performance of ``std::common_type``.
 
@@ -362,6 +365,8 @@ Improvements to Clang's diagnostics
 
 - Clang now diagnoses cases where a dangling ``GSLOwner<GSLPointer>`` object is constructed, e.g. ``std::vector<string_view> v = {std::string()};`` (#GH100526).
 
+- Clang now diagnoses when a ``requires`` expression has a local parameter of void type, aligning with the function parameter (#GH109831).
+
 Improvements to Clang's time-trace
 ----------------------------------
 
@@ -453,6 +458,8 @@ Bug Fixes to C++ Support
 - Mangle friend function templates with a constraint that depends on a template parameter from an enclosing template as members of the enclosing class. (#GH110247)
 - Fixed an issue in constraint evaluation, where type constraints on the lambda expression
   containing outer unexpanded parameters were not correctly expanded. (#GH101754)
+- Fixed a bug in constraint expression comparison where the ``sizeof...`` expression was not handled properly
+  in certain friend declarations. (#GH93099)
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -516,12 +523,13 @@ X86 Support
   * Supported MINMAX intrinsics of ``*_(mask(z)))_minmax(ne)_p[s|d|h|bh]`` and
   ``*_(mask(z)))_minmax_s[s|d|h]``.
 
-- The following bit manipulation intrinsics can now be used in constant expressions:
-  all lzcnt intrinsics in lzcntintrin.h 
-  all bextr intrinsics in bmiintrin.h
-  all tzcnt intrinsics in bmiintrin.h
-  all bzhi intrinsics in bmi2intrin.h
-  all intrinsics in tbmintrin.h
+- All intrinsics in lzcntintrin.h can now be used in constant expressions.
+
+- All intrinsics in bmiintrin.h can now be used in constant expressions.
+
+- All intrinsics in bmi2intrin.h can now be used in constant expressions.
+
+- All intrinsics in tbmintrin.h can now be used in constant expressions.
 
 Arm and AArch64 Support
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -569,6 +577,8 @@ DWARF Support in Clang
 
 Floating Point Support in Clang
 -------------------------------
+
+- Add ``__builtin_elementwise_atan2`` builtin for floating point types only.
 
 Fixed Point Support in Clang
 ----------------------------
