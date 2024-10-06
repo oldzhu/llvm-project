@@ -502,10 +502,8 @@ class ExtractElementInst final
                         // create*()
 
 public:
-  static Value *create(Value *Vec, Value *Idx, Instruction *InsertBefore,
-                       Context &Ctx, const Twine &Name = "");
-  static Value *create(Value *Vec, Value *Idx, BasicBlock *InsertAtEnd,
-                       Context &Ctx, const Twine &Name = "");
+  static Value *create(Value *Vec, Value *Idx, InsertPosition Pos, Context &Ctx,
+                       const Twine &Name = "");
   static bool classof(const Value *From) {
     return From->getSubclassID() == ClassID::ExtractElement;
   }
@@ -529,17 +527,10 @@ class ShuffleVectorInst final
   friend class Context; // For accessing the constructor in create*()
 
 public:
-  static Value *create(Value *V1, Value *V2, Value *Mask,
-                       Instruction *InsertBefore, Context &Ctx,
-                       const Twine &Name = "");
-  static Value *create(Value *V1, Value *V2, Value *Mask,
-                       BasicBlock *InsertAtEnd, Context &Ctx,
-                       const Twine &Name = "");
+  static Value *create(Value *V1, Value *V2, Value *Mask, InsertPosition Pos,
+                       Context &Ctx, const Twine &Name = "");
   static Value *create(Value *V1, Value *V2, ArrayRef<int> Mask,
-                       Instruction *InsertBefore, Context &Ctx,
-                       const Twine &Name = "");
-  static Value *create(Value *V1, Value *V2, ArrayRef<int> Mask,
-                       BasicBlock *InsertAtEnd, Context &Ctx,
+                       InsertPosition Pos, Context &Ctx,
                        const Twine &Name = "");
   static bool classof(const Value *From) {
     return From->getSubclassID() == ClassID::ShuffleVector;
@@ -974,7 +965,7 @@ class InsertValueInst
 
 public:
   static Value *create(Value *Agg, Value *Val, ArrayRef<unsigned> Idxs,
-                       BBIterator WhereIt, BasicBlock *WhereBB, Context &Ctx,
+                       InsertPosition Pos, Context &Ctx,
                        const Twine &Name = "");
 
   static bool classof(const Value *From) {
@@ -1032,15 +1023,10 @@ class BranchInst : public SingleLLVMInstructionImpl<llvm::BranchInst> {
   friend Context; // for BranchInst()
 
 public:
-  static BranchInst *create(BasicBlock *IfTrue, Instruction *InsertBefore,
-                            Context &Ctx);
-  static BranchInst *create(BasicBlock *IfTrue, BasicBlock *InsertAtEnd,
+  static BranchInst *create(BasicBlock *IfTrue, InsertPosition Pos,
                             Context &Ctx);
   static BranchInst *create(BasicBlock *IfTrue, BasicBlock *IfFalse,
-                            Value *Cond, Instruction *InsertBefore,
-                            Context &Ctx);
-  static BranchInst *create(BasicBlock *IfTrue, BasicBlock *IfFalse,
-                            Value *Cond, BasicBlock *InsertAtEnd, Context &Ctx);
+                            Value *Cond, InsertPosition Pos, Context &Ctx);
   /// For isa/dyn_cast.
   static bool classof(const Value *From);
   bool isUnconditional() const {
@@ -1122,9 +1108,8 @@ class ExtractValueInst : public UnaryInstruction {
   friend Context; // for ExtractValueInst()
 
 public:
-  static Value *create(Value *Agg, ArrayRef<unsigned> Idxs, BBIterator WhereIt,
-                       BasicBlock *WhereBB, Context &Ctx,
-                       const Twine &Name = "");
+  static Value *create(Value *Agg, ArrayRef<unsigned> Idxs, InsertPosition Pos,
+                       Context &Ctx, const Twine &Name = "");
 
   static bool classof(const Value *From) {
     return From->getSubclassID() == ClassID::ExtractValue;
@@ -1177,9 +1162,8 @@ class VAArgInst : public UnaryInstruction {
   friend Context; // For constructor;
 
 public:
-  static VAArgInst *create(Value *List, Type *Ty, BBIterator WhereIt,
-                           BasicBlock *WhereBB, Context &Ctx,
-                           const Twine &Name = "");
+  static VAArgInst *create(Value *List, Type *Ty, InsertPosition Pos,
+                           Context &Ctx, const Twine &Name = "");
   Value *getPointerOperand();
   const Value *getPointerOperand() const {
     return const_cast<VAArgInst *>(this)->getPointerOperand();
@@ -1198,8 +1182,8 @@ class FreezeInst : public UnaryInstruction {
   friend Context; // For constructor;
 
 public:
-  static FreezeInst *create(Value *V, BBIterator WhereIt, BasicBlock *WhereBB,
-                            Context &Ctx, const Twine &Name = "");
+  static FreezeInst *create(Value *V, InsertPosition Pos, Context &Ctx,
+                            const Twine &Name = "");
   static bool classof(const Value *From) {
     return From->getSubclassID() == ClassID::Freeze;
   }
@@ -1218,17 +1202,13 @@ public:
   void setVolatile(bool V);
 
   static LoadInst *create(Type *Ty, Value *Ptr, MaybeAlign Align,
-                          Instruction *InsertBefore, Context &Ctx,
+                          InsertPosition Pos, bool IsVolatile, Context &Ctx,
                           const Twine &Name = "");
   static LoadInst *create(Type *Ty, Value *Ptr, MaybeAlign Align,
-                          Instruction *InsertBefore, bool IsVolatile,
-                          Context &Ctx, const Twine &Name = "");
-  static LoadInst *create(Type *Ty, Value *Ptr, MaybeAlign Align,
-                          BasicBlock *InsertAtEnd, Context &Ctx,
-                          const Twine &Name = "");
-  static LoadInst *create(Type *Ty, Value *Ptr, MaybeAlign Align,
-                          BasicBlock *InsertAtEnd, bool IsVolatile,
-                          Context &Ctx, const Twine &Name = "");
+                          InsertPosition Pos, Context &Ctx,
+                          const Twine &Name = "") {
+    return create(Ty, Ptr, Align, Pos, /*IsVolatile=*/false, Ctx, Name);
+  }
 
   /// For isa/dyn_cast.
   static bool classof(const Value *From);
@@ -1251,15 +1231,12 @@ public:
   void setVolatile(bool V);
 
   static StoreInst *create(Value *V, Value *Ptr, MaybeAlign Align,
-                           Instruction *InsertBefore, Context &Ctx);
+                           InsertPosition Pos, bool IsVolatile, Context &Ctx);
   static StoreInst *create(Value *V, Value *Ptr, MaybeAlign Align,
-                           Instruction *InsertBefore, bool IsVolatile,
-                           Context &Ctx);
-  static StoreInst *create(Value *V, Value *Ptr, MaybeAlign Align,
-                           BasicBlock *InsertAtEnd, Context &Ctx);
-  static StoreInst *create(Value *V, Value *Ptr, MaybeAlign Align,
-                           BasicBlock *InsertAtEnd, bool IsVolatile,
-                           Context &Ctx);
+                           InsertPosition Pos, Context &Ctx) {
+    return create(V, Ptr, Align, Pos, /*IsVolatile=*/false, Ctx);
+  }
+
   /// For isa/dyn_cast.
   static bool classof(const Value *From);
   Value *getValueOperand() const;
@@ -1282,8 +1259,7 @@ class UnreachableInst final : public Instruction {
   }
 
 public:
-  static UnreachableInst *create(Instruction *InsertBefore, Context &Ctx);
-  static UnreachableInst *create(BasicBlock *InsertAtEnd, Context &Ctx);
+  static UnreachableInst *create(InsertPosition Pos, Context &Ctx);
   static bool classof(const Value *From);
   unsigned getNumSuccessors() const { return 0; }
   unsigned getUseOperandNo(const Use &Use) const final {
@@ -1303,10 +1279,7 @@ class ReturnInst final : public SingleLLVMInstructionImpl<llvm::ReturnInst> {
                                   Context &Ctx);
 
 public:
-  static ReturnInst *create(Value *RetVal, Instruction *InsertBefore,
-                            Context &Ctx);
-  static ReturnInst *create(Value *RetVal, BasicBlock *InsertAtEnd,
-                            Context &Ctx);
+  static ReturnInst *create(Value *RetVal, InsertPosition Pos, Context &Ctx);
   static bool classof(const Value *From) {
     return From->getSubclassID() == ClassID::Ret;
   }
@@ -1455,14 +1428,7 @@ class CallInst : public CallBase {
 
 public:
   static CallInst *create(FunctionType *FTy, Value *Func,
-                          ArrayRef<Value *> Args, BBIterator WhereIt,
-                          BasicBlock *WhereBB, Context &Ctx,
-                          const Twine &NameStr = "");
-  static CallInst *create(FunctionType *FTy, Value *Func,
-                          ArrayRef<Value *> Args, Instruction *InsertBefore,
-                          Context &Ctx, const Twine &NameStr = "");
-  static CallInst *create(FunctionType *FTy, Value *Func,
-                          ArrayRef<Value *> Args, BasicBlock *InsertAtEnd,
+                          ArrayRef<Value *> Args, InsertPosition Pos,
                           Context &Ctx, const Twine &NameStr = "");
 
   static bool classof(const Value *From) {
@@ -1481,16 +1447,7 @@ class InvokeInst final : public CallBase {
 public:
   static InvokeInst *create(FunctionType *FTy, Value *Func,
                             BasicBlock *IfNormal, BasicBlock *IfException,
-                            ArrayRef<Value *> Args, BBIterator WhereIt,
-                            BasicBlock *WhereBB, Context &Ctx,
-                            const Twine &NameStr = "");
-  static InvokeInst *create(FunctionType *FTy, Value *Func,
-                            BasicBlock *IfNormal, BasicBlock *IfException,
-                            ArrayRef<Value *> Args, Instruction *InsertBefore,
-                            Context &Ctx, const Twine &NameStr = "");
-  static InvokeInst *create(FunctionType *FTy, Value *Func,
-                            BasicBlock *IfNormal, BasicBlock *IfException,
-                            ArrayRef<Value *> Args, BasicBlock *InsertAtEnd,
+                            ArrayRef<Value *> Args, InsertPosition Pos,
                             Context &Ctx, const Twine &NameStr = "");
 
   static bool classof(const Value *From) {
@@ -1526,18 +1483,7 @@ public:
   static CallBrInst *create(FunctionType *FTy, Value *Func,
                             BasicBlock *DefaultDest,
                             ArrayRef<BasicBlock *> IndirectDests,
-                            ArrayRef<Value *> Args, BBIterator WhereIt,
-                            BasicBlock *WhereBB, Context &Ctx,
-                            const Twine &NameStr = "");
-  static CallBrInst *create(FunctionType *FTy, Value *Func,
-                            BasicBlock *DefaultDest,
-                            ArrayRef<BasicBlock *> IndirectDests,
-                            ArrayRef<Value *> Args, Instruction *InsertBefore,
-                            Context &Ctx, const Twine &NameStr = "");
-  static CallBrInst *create(FunctionType *FTy, Value *Func,
-                            BasicBlock *DefaultDest,
-                            ArrayRef<BasicBlock *> IndirectDests,
-                            ArrayRef<Value *> Args, BasicBlock *InsertAtEnd,
+                            ArrayRef<Value *> Args, InsertPosition Pos,
                             Context &Ctx, const Twine &NameStr = "");
   static bool classof(const Value *From) {
     return From->getSubclassID() == ClassID::CallBr;
@@ -1566,8 +1512,8 @@ class LandingPadInst : public SingleLLVMInstructionImpl<llvm::LandingPadInst> {
 
 public:
   static LandingPadInst *create(Type *RetTy, unsigned NumReservedClauses,
-                                BBIterator WhereIt, BasicBlock *WhereBB,
-                                Context &Ctx, const Twine &Name = "");
+                                InsertPosition Pos, Context &Ctx,
+                                const Twine &Name = "");
   /// Return 'true' if this landingpad instruction is a
   /// cleanup. I.e., it should be run when unwinding even if its landing pad
   /// doesn't catch the exception.
@@ -1643,8 +1589,8 @@ public:
   // for now, as there is no CatchPadInst member function that can undo it.
 
   static CatchPadInst *create(Value *ParentPad, ArrayRef<Value *> Args,
-                              BBIterator WhereIt, BasicBlock *WhereBB,
-                              Context &Ctx, const Twine &Name = "");
+                              InsertPosition Pos, Context &Ctx,
+                              const Twine &Name = "");
   static bool classof(const Value *From) {
     return From->getSubclassID() == ClassID::CatchPad;
   }
@@ -1657,8 +1603,8 @@ class CleanupPadInst : public FuncletPadInst {
 
 public:
   static CleanupPadInst *create(Value *ParentPad, ArrayRef<Value *> Args,
-                                BBIterator WhereIt, BasicBlock *WhereBB,
-                                Context &Ctx, const Twine &Name = "");
+                                InsertPosition Pos, Context &Ctx,
+                                const Twine &Name = "");
   static bool classof(const Value *From) {
     return From->getSubclassID() == ClassID::CleanupPad;
   }
@@ -1673,8 +1619,7 @@ class CatchReturnInst
 
 public:
   static CatchReturnInst *create(CatchPadInst *CatchPad, BasicBlock *BB,
-                                 BBIterator WhereIt, BasicBlock *WhereBB,
-                                 Context &Ctx);
+                                 InsertPosition Pos, Context &Ctx);
   CatchPadInst *getCatchPad() const;
   void setCatchPad(CatchPadInst *CatchPad);
   BasicBlock *getSuccessor() const;
@@ -1697,8 +1642,8 @@ class CleanupReturnInst
 
 public:
   static CleanupReturnInst *create(CleanupPadInst *CleanupPad,
-                                   BasicBlock *UnwindBB, BBIterator WhereIt,
-                                   BasicBlock *WhereBB, Context &Ctx);
+                                   BasicBlock *UnwindBB, InsertPosition Pos,
+                                   Context &Ctx);
   bool hasUnwindDest() const {
     return cast<llvm::CleanupReturnInst>(Val)->hasUnwindDest();
   }
@@ -1732,13 +1677,7 @@ class GetElementPtrInst final
 
 public:
   static Value *create(Type *Ty, Value *Ptr, ArrayRef<Value *> IdxList,
-                       BBIterator WhereIt, BasicBlock *WhereBB, Context &Ctx,
-                       const Twine &NameStr = "");
-  static Value *create(Type *Ty, Value *Ptr, ArrayRef<Value *> IdxList,
-                       Instruction *InsertBefore, Context &Ctx,
-                       const Twine &NameStr = "");
-  static Value *create(Type *Ty, Value *Ptr, ArrayRef<Value *> IdxList,
-                       BasicBlock *InsertAtEnd, Context &Ctx,
+                       InsertPosition Pos, Context &Ctx,
                        const Twine &NameStr = "");
 
   static bool classof(const Value *From) {
@@ -1810,9 +1749,8 @@ public:
                                   CSI, Ctx) {}
 
   static CatchSwitchInst *create(Value *ParentPad, BasicBlock *UnwindBB,
-                                 unsigned NumHandlers, BBIterator WhereIt,
-                                 BasicBlock *WhereBB, Context &Ctx,
-                                 const Twine &Name = "");
+                                 unsigned NumHandlers, InsertPosition Pos,
+                                 Context &Ctx, const Twine &Name = "");
 
   Value *getParentPad() const;
   void setParentPad(Value *ParentPad);
@@ -1898,8 +1836,7 @@ public:
   ResumeInst(llvm::ResumeInst *CSI, Context &Ctx)
       : SingleLLVMInstructionImpl(ClassID::Resume, Opcode::Resume, CSI, Ctx) {}
 
-  static ResumeInst *create(Value *Exn, BBIterator WhereIt, BasicBlock *WhereBB,
-                            Context &Ctx);
+  static ResumeInst *create(Value *Exn, InsertPosition Pos, Context &Ctx);
   Value *getValue() const;
   unsigned getNumSuccessors() const {
     return cast<llvm::ResumeInst>(Val)->getNumSuccessors();
@@ -1918,8 +1855,8 @@ public:
       llvm::SwitchInst::DefaultPseudoIndex;
 
   static SwitchInst *create(Value *V, BasicBlock *Dest, unsigned NumCases,
-                            BasicBlock::iterator WhereIt, BasicBlock *WhereBB,
-                            Context &Ctx, const Twine &Name = "");
+                            InsertPosition Pos, Context &Ctx,
+                            const Twine &Name = "");
 
   Value *getCondition() const;
   void setCondition(Value *V);
@@ -2009,25 +1946,10 @@ class UnaryOperator : public UnaryInstruction {
                          Ctx) {}
   friend Context; // for constructor.
 public:
-  static Value *create(Instruction::Opcode Op, Value *OpV, BBIterator WhereIt,
-                       BasicBlock *WhereBB, Context &Ctx,
-                       const Twine &Name = "");
-  static Value *create(Instruction::Opcode Op, Value *OpV,
-                       Instruction *InsertBefore, Context &Ctx,
-                       const Twine &Name = "");
-  static Value *create(Instruction::Opcode Op, Value *OpV,
-                       BasicBlock *InsertAtEnd, Context &Ctx,
-                       const Twine &Name = "");
+  static Value *create(Instruction::Opcode Op, Value *OpV, InsertPosition Pos,
+                       Context &Ctx, const Twine &Name = "");
   static Value *createWithCopiedFlags(Instruction::Opcode Op, Value *OpV,
-                                      Value *CopyFrom, BBIterator WhereIt,
-                                      BasicBlock *WhereBB, Context &Ctx,
-                                      const Twine &Name = "");
-  static Value *createWithCopiedFlags(Instruction::Opcode Op, Value *OpV,
-                                      Value *CopyFrom,
-                                      Instruction *InsertBefore, Context &Ctx,
-                                      const Twine &Name = "");
-  static Value *createWithCopiedFlags(Instruction::Opcode Op, Value *OpV,
-                                      Value *CopyFrom, BasicBlock *InsertAtEnd,
+                                      Value *CopyFrom, InsertPosition Pos,
                                       Context &Ctx, const Twine &Name = "");
   /// For isa/dyn_cast.
   static bool classof(const Value *From) {
@@ -2088,26 +2010,12 @@ protected:
 
 public:
   static Value *create(Instruction::Opcode Op, Value *LHS, Value *RHS,
-                       BBIterator WhereIt, BasicBlock *WhereBB, Context &Ctx,
-                       const Twine &Name = "");
-  static Value *create(Instruction::Opcode Op, Value *LHS, Value *RHS,
-                       Instruction *InsertBefore, Context &Ctx,
-                       const Twine &Name = "");
-  static Value *create(Instruction::Opcode Op, Value *LHS, Value *RHS,
-                       BasicBlock *InsertAtEnd, Context &Ctx,
+                       InsertPosition Pos, Context &Ctx,
                        const Twine &Name = "");
 
   static Value *createWithCopiedFlags(Instruction::Opcode Op, Value *LHS,
                                       Value *RHS, Value *CopyFrom,
-                                      BBIterator WhereIt, BasicBlock *WhereBB,
-                                      Context &Ctx, const Twine &Name = "");
-  static Value *createWithCopiedFlags(Instruction::Opcode Op, Value *LHS,
-                                      Value *RHS, Value *CopyFrom,
-                                      Instruction *InsertBefore, Context &Ctx,
-                                      const Twine &Name = "");
-  static Value *createWithCopiedFlags(Instruction::Opcode Op, Value *LHS,
-                                      Value *RHS, Value *CopyFrom,
-                                      BasicBlock *InsertAtEnd, Context &Ctx,
+                                      InsertPosition Pos, Context &Ctx,
                                       const Twine &Name = "");
   /// For isa/dyn_cast.
   static bool classof(const Value *From) {
@@ -2187,18 +2095,7 @@ public:
 
   static AtomicRMWInst *create(BinOp Op, Value *Ptr, Value *Val,
                                MaybeAlign Align, AtomicOrdering Ordering,
-                               BBIterator WhereIt, BasicBlock *WhereBB,
-                               Context &Ctx,
-                               SyncScope::ID SSID = SyncScope::System,
-                               const Twine &Name = "");
-  static AtomicRMWInst *create(BinOp Op, Value *Ptr, Value *Val,
-                               MaybeAlign Align, AtomicOrdering Ordering,
-                               Instruction *InsertBefore, Context &Ctx,
-                               SyncScope::ID SSID = SyncScope::System,
-                               const Twine &Name = "");
-  static AtomicRMWInst *create(BinOp Op, Value *Ptr, Value *Val,
-                               MaybeAlign Align, AtomicOrdering Ordering,
-                               BasicBlock *InsertAtEnd, Context &Ctx,
+                               InsertPosition Pos, Context &Ctx,
                                SyncScope::ID SSID = SyncScope::System,
                                const Twine &Name = "");
 };
@@ -2274,17 +2171,7 @@ public:
   static AtomicCmpXchgInst *
   create(Value *Ptr, Value *Cmp, Value *New, MaybeAlign Align,
          AtomicOrdering SuccessOrdering, AtomicOrdering FailureOrdering,
-         BBIterator WhereIt, BasicBlock *WhereBB, Context &Ctx,
-         SyncScope::ID SSID = SyncScope::System, const Twine &Name = "");
-  static AtomicCmpXchgInst *
-  create(Value *Ptr, Value *Cmp, Value *New, MaybeAlign Align,
-         AtomicOrdering SuccessOrdering, AtomicOrdering FailureOrdering,
-         Instruction *InsertBefore, Context &Ctx,
-         SyncScope::ID SSID = SyncScope::System, const Twine &Name = "");
-  static AtomicCmpXchgInst *
-  create(Value *Ptr, Value *Cmp, Value *New, MaybeAlign Align,
-         AtomicOrdering SuccessOrdering, AtomicOrdering FailureOrdering,
-         BasicBlock *InsertAtEnd, Context &Ctx,
+         InsertPosition Pos, Context &Ctx,
          SyncScope::ID SSID = SyncScope::System, const Twine &Name = "");
 
   static bool classof(const Value *From) {
@@ -2299,15 +2186,9 @@ class AllocaInst final : public UnaryInstruction {
   friend class Context; // For constructor.
 
 public:
-  static AllocaInst *create(Type *Ty, unsigned AddrSpace, BBIterator WhereIt,
-                            BasicBlock *WhereBB, Context &Ctx,
-                            Value *ArraySize = nullptr, const Twine &Name = "");
-  static AllocaInst *create(Type *Ty, unsigned AddrSpace,
-                            Instruction *InsertBefore, Context &Ctx,
-                            Value *ArraySize = nullptr, const Twine &Name = "");
-  static AllocaInst *create(Type *Ty, unsigned AddrSpace,
-                            BasicBlock *InsertAtEnd, Context &Ctx,
-                            Value *ArraySize = nullptr, const Twine &Name = "");
+  static AllocaInst *create(Type *Ty, unsigned AddrSpace, InsertPosition Pos,
+                            Context &Ctx, Value *ArraySize = nullptr,
+                            const Twine &Name = "");
 
   /// Return true if there is an allocation size parameter to the allocation
   /// instruction that is not 1.
@@ -2409,13 +2290,7 @@ class CastInst : public UnaryInstruction {
 
 public:
   static Value *create(Type *DestTy, Opcode Op, Value *Operand,
-                       BBIterator WhereIt, BasicBlock *WhereBB, Context &Ctx,
-                       const Twine &Name = "");
-  static Value *create(Type *DestTy, Opcode Op, Value *Operand,
-                       Instruction *InsertBefore, Context &Ctx,
-                       const Twine &Name = "");
-  static Value *create(Type *DestTy, Opcode Op, Value *Operand,
-                       BasicBlock *InsertAtEnd, Context &Ctx,
+                       InsertPosition Pos, Context &Ctx,
                        const Twine &Name = "");
   /// For isa/dyn_cast.
   static bool classof(const Value *From);
@@ -2448,19 +2323,9 @@ public:
 // Helper class to simplify stamping out CastInst subclasses.
 template <Instruction::Opcode Op> class CastInstImpl : public CastInst {
 public:
-  static Value *create(Value *Src, Type *DestTy, BBIterator WhereIt,
-                       BasicBlock *WhereBB, Context &Ctx,
-                       const Twine &Name = "") {
-    return CastInst::create(DestTy, Op, Src, WhereIt, WhereBB, Ctx, Name);
-  }
-  static Value *create(Value *Src, Type *DestTy, Instruction *InsertBefore,
+  static Value *create(Value *Src, Type *DestTy, InsertPosition Pos,
                        Context &Ctx, const Twine &Name = "") {
-    return create(Src, DestTy, InsertBefore->getIterator(),
-                  InsertBefore->getParent(), Ctx, Name);
-  }
-  static Value *create(Value *Src, Type *DestTy, BasicBlock *InsertAtEnd,
-                       Context &Ctx, const Twine &Name = "") {
-    return create(Src, DestTy, InsertAtEnd->end(), InsertAtEnd, Ctx, Name);
+    return CastInst::create(DestTy, Op, Src, Pos, Ctx, Name);
   }
 
   static bool classof(const Value *From) {
@@ -2519,7 +2384,7 @@ class PHINode final : public SingleLLVMInstructionImpl<llvm::PHINode> {
 
 public:
   static PHINode *create(Type *Ty, unsigned NumReservedValues,
-                         Instruction *InsertBefore, Context &Ctx,
+                         InsertPosition Pos, Context &Ctx,
                          const Twine &Name = "");
   /// For isa/dyn_cast.
   static bool classof(const Value *From);
@@ -2610,11 +2475,11 @@ public:
   using Predicate = llvm::CmpInst::Predicate;
 
   static CmpInst *create(Predicate Pred, Value *S1, Value *S2,
-                         Instruction *InsertBefore, Context &Ctx,
+                         InsertPosition Pos, Context &Ctx,
                          const Twine &Name = "");
   static CmpInst *createWithCopiedFlags(Predicate Pred, Value *S1, Value *S2,
                                         const Instruction *FlagsSource,
-                                        Instruction *InsertBefore, Context &Ctx,
+                                        InsertPosition Pos, Context &Ctx,
                                         const Twine &Name = "");
   void setPredicate(Predicate P);
   void swapOperands();
