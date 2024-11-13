@@ -44,7 +44,7 @@ define i32 @mul_to_shift(i32 %x) {
 ;
 ; RV64-LABEL: mul_to_shift:
 ; RV64:       # %bb.0:
-; RV64-NEXT:    slliw a0, a0, 2
+; RV64-NEXT:    slli a0, a0, 2
 ; RV64-NEXT:    ret
   %a = mul i32 %x, 4
   ret i32 %a
