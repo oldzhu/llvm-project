@@ -70,11 +70,6 @@ raw_ostream &lld::outs() {
   return e.outs();
 }
 
-raw_ostream &lld::errs() {
-  ErrorHandler &e = errorHandler();
-  return e.errs();
-}
-
 raw_ostream &ErrorHandler::outs() {
   if (disableOutput)
     return llvm::nulls();
@@ -215,7 +210,7 @@ void ErrorHandler::reportDiagnostic(StringRef location, Colors c,
   raw_svector_ostream os(buf);
   os << sep << location << ": ";
   if (!diagKind.empty()) {
-    if (lld::errs().colors_enabled()) {
+    if (errs().colors_enabled()) {
       os.enable_colors(true);
       os << c << diagKind << ": " << Colors::RESET;
     } else {
@@ -223,7 +218,7 @@ void ErrorHandler::reportDiagnostic(StringRef location, Colors c,
     }
   }
   os << msg << '\n';
-  lld::errs() << buf;
+  errs() << buf;
 }
 
 void ErrorHandler::log(const Twine &msg) {
