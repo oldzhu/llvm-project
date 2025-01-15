@@ -4052,7 +4052,8 @@ LoopVectorizationCostModel::computeMaxVF(ElementCount UserVF, unsigned UserIC) {
     return FixedScalableVFPair::getNone();
   }
 
-  unsigned TC = PSE.getSE()->getSmallConstantTripCount(TheLoop);
+  ScalarEvolution *SE = PSE.getSE();
+  unsigned TC = SE->getSmallConstantTripCount(TheLoop);
   unsigned MaxTC = PSE.getSmallConstantMaxTripCount();
   LLVM_DEBUG(dbgs() << "LV: Found trip count: " << TC << '\n');
   if (TC != MaxTC)
@@ -4061,6 +4062,22 @@ LoopVectorizationCostModel::computeMaxVF(ElementCount UserVF, unsigned UserIC) {
     reportVectorizationFailure("Single iteration (non) loop",
         "loop trip count is one, irrelevant for vectorization",
         "SingleIterationLoop", ORE, TheLoop);
+    return FixedScalableVFPair::getNone();
+  }
+
+  // If BTC matches the widest induction type and is -1 then the trip count
+  // computation will wrap to 0 and the vector trip count will be 0. Do not try
+  // to vectorize.
+  const SCEV *BTC = SE->getBackedgeTakenCount(TheLoop);
+  if (!isa<SCEVCouldNotCompute>(BTC) &&
+      BTC->getType()->getScalarSizeInBits() >=
+          Legal->getWidestInductionType()->getScalarSizeInBits() &&
+      SE->isKnownPredicate(CmpInst::ICMP_EQ, BTC,
+                           SE->getMinusOne(BTC->getType()))) {
+    reportVectorizationFailure(
+        "Trip count computation wrapped",
+        "backedge-taken count is -1, loop trip count wrapped to 0",
+        "TripCountWrapped", ORE, TheLoop);
     return FixedScalableVFPair::getNone();
   }
 
@@ -9624,6 +9641,8 @@ LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(VFRange &Range) {
     VPlanTransforms::addActiveLaneMask(*Plan, ForControlFlow,
                                        WithoutRuntimeCheck);
   }
+
+  assert(verifyVPlanIsValid(*Plan) && "VPlan is invalid");
   return Plan;
 }
 
@@ -9698,6 +9717,8 @@ void LoopVectorizationPlanner::adjustRecipesForReductions(
   VPRegionBlock *VectorLoopRegion = Plan->getVectorLoopRegion();
   VPBasicBlock *Header = VectorLoopRegion->getEntryBasicBlock();
   VPBasicBlock *MiddleVPBB = Plan->getMiddleBlock();
+  SmallVector<VPRecipeBase *> ToDelete;
+
   for (VPRecipeBase &R : Header->phis()) {
     auto *PhiR = dyn_cast<VPReductionPHIRecipe>(&R);
     if (!PhiR || !PhiR->isInLoop() || (MinVF.isScalar() && !PhiR->isOrdered()))
@@ -9817,10 +9838,11 @@ void LoopVectorizationPlanner::adjustRecipesForReductions(
           CM.useOrderedReductions(RdxDesc), CurrentLinkI->getDebugLoc());
       // Append the recipe to the end of the VPBasicBlock because we need to
       // ensure that it comes after all of it's inputs, including CondOp.
-      // Note that this transformation may leave over dead recipes (including
-      // CurrentLink), which will be cleaned by a later VPlan transform.
+      // Delete CurrentLink as it will be invalid if its operand is replaced
+      // with a reduction defined at the bottom of the block in the next link.
       LinkVPBB->appendRecipe(RedRecipe);
       CurrentLink->replaceAllUsesWith(RedRecipe);
+      ToDelete.push_back(CurrentLink);
       PreviousLink = RedRecipe;
     }
   }
@@ -9935,6 +9957,8 @@ void LoopVectorizationPlanner::adjustRecipesForReductions(
         Cmp = Builder.createNot(Cmp);
       VPValue *Or = Builder.createOr(PhiR, Cmp);
       Select->getVPSingleValue()->replaceAllUsesWith(Or);
+      // Delete Select now that it has invalid types.
+      ToDelete.push_back(Select);
 
       // Convert the reduction phi to operate on bools.
       PhiR->setOperand(0, Plan->getOrAddLiveIn(ConstantInt::getFalse(
@@ -9952,6 +9976,8 @@ void LoopVectorizationPlanner::adjustRecipesForReductions(
   }
 
   VPlanTransforms::clearReductionWrapFlags(*Plan);
+  for (VPRecipeBase *R : ToDelete)
+    R->eraseFromParent();
 }
 
 void VPDerivedIVRecipe::execute(VPTransformState &State) {
