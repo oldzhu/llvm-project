@@ -42,6 +42,7 @@
 #include <array>
 #include <bitset>
 #include <memory>
+#include <unordered_map>
 
 using namespace llvm;
 
