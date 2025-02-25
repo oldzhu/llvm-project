@@ -68,3 +68,6 @@ add_dependencies(lldb-server
 )
 target_include_directories(lldb-server PRIVATE "${LLDB_SOURCE_DIR}/source")
 target_link_libraries(lldb-server PRIVATE ${LLDB_SYSTEM_LIBS})
+
+#fix link erro when building for riscv
+target_link_libraries(lldb-server PRIVATE atomic)

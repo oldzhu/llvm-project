@@ -11,6 +11,8 @@ else()
   set(CAN_USE_ASSEMBLER TRUE)
 endif()
 
+#to workaround the assembler error to build BLAKE3
+set(CAN_USE_ASSEMBLER FALSE)
 macro(disable_blake3_x86_simd)
   add_compile_definitions(BLAKE3_NO_AVX512 BLAKE3_NO_AVX2 BLAKE3_NO_SSE41 BLAKE3_NO_SSE2)
 endmacro()

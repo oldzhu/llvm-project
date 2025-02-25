@@ -302,3 +302,6 @@ if(LLDB_BUILD_FRAMEWORK)
       lldb-framework-cleanup)
   endif()
 endif()
+
+# fix link error when building for riscv
+target_link_libraries(liblldb PRIVATE atomic)
