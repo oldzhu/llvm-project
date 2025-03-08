@@ -551,7 +551,7 @@ def err_decomp_decl_constraint : Error<
 def err_decomp_decl_parens : Error<
   "decomposition declaration cannot be declared with parentheses">;
 def err_decomp_decl_template : Error<
-  "decomposition declaration template not supported">;
+  "decomposition declaration cannot be a template">;
 def err_decomp_decl_not_alone : Error<
   "decomposition declaration must be the only declaration in its group">;
 def err_decomp_decl_requires_init : Error<
@@ -7132,6 +7132,9 @@ def warn_shift_result_sets_sign_bit : Warning<
   "signed shift result (%0) sets the sign bit of the shift expression's "
   "type (%1) and becomes negative">,
   InGroup<DiagGroup<"shift-sign-overflow">>, DefaultIgnore;
+def warn_shift_bool : Warning<
+  "right shifting a 'bool' implicitly converts it to 'int'">,
+  InGroup<DiagGroup<"shift-bool">>, DefaultIgnore;
 
 def warn_precedence_bitwise_rel : Warning<
   "%0 has lower precedence than %1; %1 will be evaluated first">,
@@ -10422,8 +10425,13 @@ def warn_type_safety_null_pointer_required : Warning<
   "specified %0 type tag requires a null pointer">, InGroup<TypeSafety>;
 
 // Generic selections.
-def err_assoc_type_incomplete : Error<
-  "type %0 in generic association incomplete">;
+def ext_assoc_type_incomplete : Extension<
+  "incomplete type %0 in a '_Generic' association is a C2y extension">,
+  InGroup<C2y>;
+def warn_c2y_compat_assoc_type_incomplete : Warning<
+  "use of incomplete type %0 in a '_Generic' association is incompatible with "
+  "C standards before C2y">,
+  InGroup<CPre2yCompat>, DefaultIgnore;
 def err_assoc_type_nonobject : Error<
   "type %0 in generic association not an object type">;
 def err_assoc_type_variably_modified : Error<
