@@ -656,8 +656,8 @@ iterator_range<early_inc_iterator_impl<detail::IterOfRange<RangeT>>>
 make_early_inc_range(RangeT &&Range) {
   using EarlyIncIteratorT =
       early_inc_iterator_impl<detail::IterOfRange<RangeT>>;
-  return make_range(EarlyIncIteratorT(std::begin(std::forward<RangeT>(Range))),
-                    EarlyIncIteratorT(std::end(std::forward<RangeT>(Range))));
+  return make_range(EarlyIncIteratorT(adl_begin(Range)),
+                    EarlyIncIteratorT(adl_end(Range)));
 }
 
 // Forward declarations required by zip_shortest/zip_equal/zip_first/zip_longest
@@ -2562,19 +2562,19 @@ bool hasNItemsOrLess(
 
 /// Returns true if the given container has exactly N items
 template <typename ContainerTy> bool hasNItems(ContainerTy &&C, unsigned N) {
-  return hasNItems(std::begin(C), std::end(C), N);
+  return hasNItems(adl_begin(C), adl_end(C), N);
 }
 
 /// Returns true if the given container has N or more items
 template <typename ContainerTy>
 bool hasNItemsOrMore(ContainerTy &&C, unsigned N) {
-  return hasNItemsOrMore(std::begin(C), std::end(C), N);
+  return hasNItemsOrMore(adl_begin(C), adl_end(C), N);
 }
 
 /// Returns true if the given container has N or less items
 template <typename ContainerTy>
 bool hasNItemsOrLess(ContainerTy &&C, unsigned N) {
-  return hasNItemsOrLess(std::begin(C), std::end(C), N);
+  return hasNItemsOrLess(adl_begin(C), adl_end(C), N);
 }
 
 /// Returns a raw pointer that represents the same address as the argument.
