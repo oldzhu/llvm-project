@@ -309,6 +309,7 @@ Bug Fixes to C++ Support
   not in the last position.
 - Clang now correctly parses ``if constexpr`` expressions in immediate function context. (#GH123524)
 - Fixed an assertion failure affecting code that uses C++23 "deducing this". (#GH130272)
+- Clang now properly instantiates destructors for initialized members within non-delegating constructors. (#GH93251)
 
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -361,6 +362,10 @@ Windows Support
 - Clang now defines ``_CRT_USE_BUILTIN_OFFSETOF`` macro in MSVC-compatible mode,
   which makes ``offsetof`` provided by Microsoft's ``<stddef.h>`` to be defined
   correctly. (#GH59689)
+
+- Clang now can process the `i128` and `ui128` integeral suffixes when MSVC
+  extensions are enabled. This allows for properly processing ``intsafe.h`` in
+  the Windows SDK.
 
 LoongArch Support
 ^^^^^^^^^^^^^^^^^
