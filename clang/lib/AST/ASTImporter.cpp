@@ -1632,7 +1632,7 @@ ExpectedType ASTNodeImporter::VisitSubstTemplateTypeParmType(
 
   return Importer.getToContext().getSubstTemplateTypeParmType(
       *ToReplacementTypeOrErr, *ReplacedOrErr, T->getIndex(), T->getPackIndex(),
-      T->getSubstitutionFlag());
+      T->getFinal());
 }
 
 ExpectedType ASTNodeImporter::VisitSubstTemplateTypeParmPackType(
@@ -5983,7 +5983,8 @@ ASTNodeImporter::VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D) {
     if (Err)
       return std::move(Err);
 
-    ToD->setTypeConstraint(ToConceptRef, ToIDC);
+    ToD->setTypeConstraint(ToConceptRef, ToIDC,
+                           TC->getArgumentPackSubstitutionIndex());
   }
 
   if (Error Err = importTemplateParameterDefaultArgument(D, ToD))
@@ -8944,7 +8945,8 @@ ExpectedStmt ASTNodeImporter::VisitSubstNonTypeTemplateParmExpr(
 
   return new (Importer.getToContext()) SubstNonTypeTemplateParmExpr(
       ToType, E->getValueKind(), ToExprLoc, ToReplacement, ToAssociatedDecl,
-      E->getIndex(), E->getPackIndex(), E->isReferenceParameter());
+      E->getIndex(), E->getPackIndex(), E->isReferenceParameter(),
+      E->getFinal());
 }
 
 ExpectedStmt ASTNodeImporter::VisitTypeTraitExpr(TypeTraitExpr *E) {
@@ -9957,7 +9959,7 @@ Expected<TemplateName> ASTImporter::Import(TemplateName From) {
 
     return ToContext.getSubstTemplateTemplateParm(
         *ReplacementOrErr, *AssociatedDeclOrErr, Subst->getIndex(),
-        Subst->getPackIndex());
+        Subst->getPackIndex(), Subst->getFinal());
   }
 
   case TemplateName::SubstTemplateTemplateParmPack: {
