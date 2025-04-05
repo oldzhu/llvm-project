@@ -8717,6 +8717,7 @@ void ASTRecordWriter::writeOpenACCClause(const OpenACCClause *C) {
   case OpenACCClauseKind::PresentOrCopy: {
     const auto *CC = cast<OpenACCCopyClause>(C);
     writeSourceLocation(CC->getLParenLoc());
+    writeEnum(CC->getModifierList());
     writeOpenACCVarList(CC);
     return;
   }
@@ -8725,7 +8726,7 @@ void ASTRecordWriter::writeOpenACCClause(const OpenACCClause *C) {
   case OpenACCClauseKind::PresentOrCopyIn: {
     const auto *CIC = cast<OpenACCCopyInClause>(C);
     writeSourceLocation(CIC->getLParenLoc());
-    writeBool(CIC->isReadOnly());
+    writeEnum(CIC->getModifierList());
     writeOpenACCVarList(CIC);
     return;
   }
@@ -8734,7 +8735,7 @@ void ASTRecordWriter::writeOpenACCClause(const OpenACCClause *C) {
   case OpenACCClauseKind::PresentOrCopyOut: {
     const auto *COC = cast<OpenACCCopyOutClause>(C);
     writeSourceLocation(COC->getLParenLoc());
-    writeBool(COC->isZero());
+    writeEnum(COC->getModifierList());
     writeOpenACCVarList(COC);
     return;
   }
@@ -8743,7 +8744,7 @@ void ASTRecordWriter::writeOpenACCClause(const OpenACCClause *C) {
   case OpenACCClauseKind::PresentOrCreate: {
     const auto *CC = cast<OpenACCCreateClause>(C);
     writeSourceLocation(CC->getLParenLoc());
-    writeBool(CC->isZero());
+    writeEnum(CC->getModifierList());
     writeOpenACCVarList(CC);
     return;
   }

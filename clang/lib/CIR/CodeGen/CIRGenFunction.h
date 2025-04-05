@@ -399,6 +399,10 @@ public:
 
   LValue emitBinaryOperatorLValue(const BinaryOperator *e);
 
+  mlir::LogicalResult emitBreakStmt(const clang::BreakStmt &s);
+  mlir::LogicalResult emitContinueStmt(const clang::ContinueStmt &s);
+  mlir::LogicalResult emitDoStmt(const clang::DoStmt &s);
+
   /// Emit an expression as an initializer for an object (variable, field, etc.)
   /// at the given location.  The expression is not necessarily the normal
   /// initializer for the object, and the address is not necessarily
@@ -496,6 +500,8 @@ public:
   /// This method handles emission of any variable declaration
   /// inside a function, including static vars etc.
   void emitVarDecl(const clang::VarDecl &d);
+
+  mlir::LogicalResult emitWhileStmt(const clang::WhileStmt &s);
 
   /// ----------------------
   /// CIR build helpers
