@@ -400,7 +400,9 @@ def LoadOp : CIR_Op<"load", [
   let summary = "Load value from memory adddress";
   let description = [{
     `cir.load` reads a value (lvalue to rvalue conversion) given an address
-    backed up by a `cir.ptr` type.
+    backed up by a `cir.ptr` type. A unit attribute `deref` can be used to
+    mark the resulting value as used by another operation to dereference
+    a pointer.
 
     Example:
 
@@ -408,14 +410,19 @@ def LoadOp : CIR_Op<"load", [
 
     // Read from local variable, address in %0.
     %1 = cir.load %0 : !cir.ptr<i32>, i32
+
+    // Load address from memory at address %0. %3 is used by at least one
+    // operation that dereferences a pointer.
+    %3 = cir.load deref %0 : !cir.ptr<!cir.ptr<i32>>
     ```
   }];
 
   let arguments = (ins Arg<CIR_PointerType, "the address to load from",
-                           [MemRead]>:$addr);
+                           [MemRead]>:$addr, UnitAttr:$isDeref);
   let results = (outs CIR_AnyType:$result);
 
   let assemblyFormat = [{
+    (`deref` $isDeref^)?
     $addr `:` qualified(type($addr)) `,` type($result) attr-dict
   }];
 
@@ -465,7 +472,8 @@ def StoreOp : CIR_Op<"store", [
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
-def ReturnOp : CIR_Op<"return", [ParentOneOf<["FuncOp", "ScopeOp", "ForOp"]>,
+def ReturnOp : CIR_Op<"return", [ParentOneOf<["FuncOp", "ScopeOp", "IfOp",
+                                              "DoWhileOp", "WhileOp", "ForOp"]>,
                                  Terminator]> {
   let summary = "Return from function";
   let description = [{
@@ -500,6 +508,58 @@ def ReturnOp : CIR_Op<"return", [ParentOneOf<["FuncOp", "ScopeOp", "ForOp"]>,
   }];
 
   let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+def IfOp : CIR_Op<"if",
+     [DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+     RecursivelySpeculatable, AutomaticAllocationScope, NoRegionArguments]>{
+
+  let summary = "the if-then-else operation";
+  let description = [{
+    The `cir.if` operation represents an if-then-else construct for
+    conditionally executing two regions of code. The operand is a `cir.bool`
+    type.
+
+    Examples:
+
+    ```mlir
+    cir.if %cond  {
+      ...
+    } else {
+      ...
+    }
+
+    cir.if %cond  {
+      ...
+    }
+
+    cir.if %cond  {
+      ...
+      cir.br ^a
+    ^a:
+      cir.yield
+    }
+    ```
+
+    `cir.if` defines no values and the 'else' can be omitted. The if/else
+    regions must be terminated. If the region has only one block, the terminator
+    can be left out, and `cir.yield` terminator will be inserted implictly.
+    Otherwise, the region must be explicitly terminated.
+  }];
+  let arguments = (ins CIR_BoolType:$condition);
+  let regions = (region AnyRegion:$thenRegion, AnyRegion:$elseRegion);
+  let hasCustomAssemblyFormat=1;
+  let hasVerifier=1;
+  let skipDefaultBuilders=1;
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$cond, "bool":$withElseRegion,
+      CArg<"BuilderCallbackRef", "buildTerminatedBody">:$thenBuilder,
+      CArg<"BuilderCallbackRef", "nullptr">:$elseBuilder)>
+  ];
 }
 
 //===----------------------------------------------------------------------===//
@@ -552,7 +612,8 @@ def ConditionOp : CIR_Op<"condition", [
 //===----------------------------------------------------------------------===//
 
 def YieldOp : CIR_Op<"yield", [ReturnLike, Terminator,
-                               ParentOneOf<["ScopeOp", "ForOp"]>]> {
+                               ParentOneOf<["IfOp", "ScopeOp", "WhileOp",
+                                            "ForOp", "DoWhileOp"]>]> {
   let summary = "Represents the default branching behaviour of a region";
   let description = [{
     The `cir.yield` operation terminates regions on different CIR operations,
@@ -838,10 +899,105 @@ def BrCondOp : CIR_Op<"brcond",
 }
 
 //===----------------------------------------------------------------------===//
+// Common loop op definitions
+//===----------------------------------------------------------------------===//
+
+class LoopOpBase<string mnemonic> : CIR_Op<mnemonic, [
+  LoopOpInterface,
+  NoRegionArguments,
+]> {
+  let extraClassDefinition = [{
+    void $cppClass::getSuccessorRegions(
+        mlir::RegionBranchPoint point,
+        llvm::SmallVectorImpl<mlir::RegionSuccessor> &regions) {
+      LoopOpInterface::getLoopOpSuccessorRegions(*this, point, regions);
+    }
+    llvm::SmallVector<Region *> $cppClass::getLoopRegions() {
+      return {&getBody()};
+    }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// While & DoWhileOp
+//===----------------------------------------------------------------------===//
+
+class WhileOpBase<string mnemonic> : LoopOpBase<mnemonic> {
+  defvar isWhile = !eq(mnemonic, "while");
+  let summary = "C/C++ " # !if(isWhile, "while", "do-while") # " loop";
+  let builders = [
+    OpBuilder<(ins "BuilderCallbackRef":$condBuilder,
+                   "BuilderCallbackRef":$bodyBuilder), [{
+        mlir::OpBuilder::InsertionGuard guard($_builder);
+        $_builder.createBlock($_state.addRegion());
+      }] # !if(isWhile, [{
+        condBuilder($_builder, $_state.location);
+        $_builder.createBlock($_state.addRegion());
+        bodyBuilder($_builder, $_state.location);
+      }], [{
+        bodyBuilder($_builder, $_state.location);
+        $_builder.createBlock($_state.addRegion());
+        condBuilder($_builder, $_state.location);
+      }])>
+  ];
+}
+
+def WhileOp : WhileOpBase<"while"> {
+  let regions = (region SizedRegion<1>:$cond, MinSizedRegion<1>:$body);
+  let assemblyFormat = "$cond `do` $body attr-dict";
+
+  let description = [{
+    Represents a C/C++ while loop. It consists of two regions:
+
+     - `cond`: single block region with the loop's condition. Should be
+     terminated with a `cir.condition` operation.
+     - `body`: contains the loop body and an arbitrary number of blocks.
+
+    Example:
+
+    ```mlir
+    cir.while {
+      cir.break
+    ^bb2:
+      cir.yield
+    } do {
+      cir.condition %cond : cir.bool
+    }
+    ```
+  }];
+}
+
+def DoWhileOp : WhileOpBase<"do"> {
+  let regions = (region MinSizedRegion<1>:$body, SizedRegion<1>:$cond);
+  let assemblyFormat = " $body `while` $cond attr-dict";
+
+  let extraClassDeclaration = [{
+    mlir::Region &getEntry() { return getBody(); }
+  }];
+
+  let description = [{
+    Represents a C/C++ do-while loop. Identical to `cir.while` but the
+    condition is evaluated after the body.
+
+    Example:
+
+    ```mlir
+    cir.do {
+      cir.break
+    ^bb2:
+      cir.yield
+    } while {
+      cir.condition %cond : cir.bool
+    }
+    ```
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // ForOp
 //===----------------------------------------------------------------------===//
 
-def ForOp : CIR_Op<"for", [LoopOpInterface, NoRegionArguments]> {
+def ForOp : LoopOpBase<"for"> {
   let summary = "C/C++ for loop counterpart";
   let description = [{
     Represents a C/C++ for loop. It consists of three regions:
@@ -901,6 +1057,47 @@ def ForOp : CIR_Op<"for", [LoopOpInterface, NoRegionArguments]> {
     llvm::SmallVector<mlir::Region *> getRegionsInExecutionOrder() {
       return llvm::SmallVector<mlir::Region *, 3>{&getCond(), &getBody(), &getStep()};
     }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// CmpOp
+//===----------------------------------------------------------------------===//
+
+def CmpOpKind_LT : I32EnumAttrCase<"lt", 1>;
+def CmpOpKind_LE : I32EnumAttrCase<"le", 2>;
+def CmpOpKind_GT : I32EnumAttrCase<"gt", 3>;
+def CmpOpKind_GE : I32EnumAttrCase<"ge", 4>;
+def CmpOpKind_EQ : I32EnumAttrCase<"eq", 5>;
+def CmpOpKind_NE : I32EnumAttrCase<"ne", 6>;
+
+def CmpOpKind : I32EnumAttr<
+    "CmpOpKind",
+    "compare operation kind",
+    [CmpOpKind_LT, CmpOpKind_LE, CmpOpKind_GT,
+     CmpOpKind_GE, CmpOpKind_EQ, CmpOpKind_NE]> {
+  let cppNamespace = "::cir";
+}
+
+def CmpOp : CIR_Op<"cmp", [Pure, SameTypeOperands]> {
+
+  let summary = "Compare values two values and produce a boolean result";
+  let description = [{
+    `cir.cmp` compares two input operands of the same type and produces a
+    `cir.bool` result. The kinds of comparison available are:
+    [lt,gt,ge,eq,ne]
+
+    ```mlir
+    %7 = cir.cmp(gt, %1, %2) : i32, !cir.bool
+    ```
+  }];
+
+  let results = (outs CIR_BoolType:$result);
+  let arguments = (ins Arg<CmpOpKind, "cmp kind">:$kind,
+                       CIR_AnyType:$lhs, CIR_AnyType:$rhs);
+
+  let assemblyFormat = [{
+    `(` $kind `,` $lhs `,` $rhs  `)` `:` type($lhs) `,` type($result) attr-dict
   }];
 }
 
