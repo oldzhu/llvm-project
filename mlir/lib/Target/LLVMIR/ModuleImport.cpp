@@ -2359,6 +2359,10 @@ LogicalResult ModuleImport::convertCallAttributes(llvm::CallInst *inst,
   op.setConvergent(callAttrs.getFnAttr(llvm::Attribute::Convergent).isValid());
   op.setNoUnwind(callAttrs.getFnAttr(llvm::Attribute::NoUnwind).isValid());
   op.setWillReturn(callAttrs.getFnAttr(llvm::Attribute::WillReturn).isValid());
+  op.setNoInline(callAttrs.getFnAttr(llvm::Attribute::NoInline).isValid());
+  op.setAlwaysInline(
+      callAttrs.getFnAttr(llvm::Attribute::AlwaysInline).isValid());
+  op.setInlineHint(callAttrs.getFnAttr(llvm::Attribute::InlineHint).isValid());
 
   llvm::MemoryEffects memEffects = inst->getMemoryEffects();
   ModRefInfo othermem = convertModRefInfoFromLLVM(

@@ -2623,6 +2623,48 @@ llvm.func @willreturn_call() {
 
 // -----
 
+llvm.func @f()
+
+// CHECK-LABEL: @no_inline_call
+// CHECK: call void @f() #[[ATTRS:[0-9]+]]
+llvm.func @no_inline_call() {
+  llvm.call @f() {no_inline} : () -> ()
+  llvm.return
+}
+
+// CHECK: #[[ATTRS]]
+// CHECK-SAME: noinline
+
+// -----
+
+llvm.func @f()
+
+// CHECK-LABEL: @always_inline_call
+// CHECK: call void @f() #[[ATTRS:[0-9]+]]
+llvm.func @always_inline_call() {
+  llvm.call @f() {always_inline} : () -> ()
+  llvm.return
+}
+
+// CHECK: #[[ATTRS]]
+// CHECK-SAME: alwaysinline
+
+// -----
+
+llvm.func @f()
+
+// CHECK-LABEL: @inline_hint_call
+// CHECK: call void @f() #[[ATTRS:[0-9]+]]
+llvm.func @inline_hint_call() {
+  llvm.call @f() {inline_hint} : () -> ()
+  llvm.return
+}
+
+// CHECK: #[[ATTRS]]
+// CHECK-SAME: inlinehint
+
+// -----
+
 llvm.func @fa()
 llvm.func @fb()
 llvm.func @fc()
