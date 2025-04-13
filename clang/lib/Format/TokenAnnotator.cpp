@@ -5565,7 +5565,8 @@ static bool isAllmanBrace(const FormatToken &Tok) {
 // Returns 'true' if 'Tok' is a function argument.
 static bool IsFunctionArgument(const FormatToken &Tok) {
   return Tok.MatchingParen && Tok.MatchingParen->Next &&
-         Tok.MatchingParen->Next->isOneOf(tok::comma, tok::r_paren);
+         Tok.MatchingParen->Next->isOneOf(tok::comma, tok::r_paren,
+                                          tok::r_brace);
 }
 
 static bool
