@@ -55,9 +55,8 @@ public:
                                        uint64_t Value) const;
 
   bool fixupNeedsRelaxationAdvanced(const MCAssembler &,
-                                    const MCRelaxableFragment &,
                                     const MCFixup &, const MCValue &, uint64_t,
-                                    bool, bool) const override;
+                                    bool) const override;
 
   void relaxInstruction(MCInst &Inst,
                         const MCSubtargetInfo &STI) const override;
