@@ -86,7 +86,11 @@ public:
   mlir::MLIRContext &getMLIRContext() const;
   clang::ASTContext &getASTContext() const { return astContext; }
 
+  bool isRecordLayoutComplete(const clang::Type *ty) const;
   bool noRecordsBeingLaidOut() const { return recordsBeingLaidOut.empty(); }
+  bool isRecordBeingLaidOut(const clang::Type *ty) const {
+    return recordsBeingLaidOut.count(ty);
+  }
 
   /// Convert a Clang type into a mlir::Type.
   mlir::Type convertType(clang::QualType type);
