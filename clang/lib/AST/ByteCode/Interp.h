@@ -1923,7 +1923,7 @@ inline bool CastMemberPtrPtr(InterpState &S, CodePtr OpPC) {
     S.Stk.push<Pointer>(*Ptr);
     return true;
   }
-  return false;
+  return Invalid(S, OpPC);
 }
 
 //===----------------------------------------------------------------------===//
