@@ -883,6 +883,11 @@ public:
       gpuLaunchOp.getAsyncObjectMutable().assign(op.getStream());
     if (procAttr)
       gpuLaunchOp->setAttr(cuf::getProcAttrName(), procAttr);
+    else
+      // Set default global attribute of the original was not found.
+      gpuLaunchOp->setAttr(cuf::getProcAttrName(),
+                           cuf::ProcAttributeAttr::get(
+                               op.getContext(), cuf::ProcAttribute::Global));
     rewriter.replaceOp(op, gpuLaunchOp);
     return mlir::success();
   }
