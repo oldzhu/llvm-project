@@ -2002,7 +2002,7 @@ public:
           InstructionCost NewMemCheckCost = MemCheckCost / BestTripCount;
 
           // Let's ensure the cost is always at least 1.
-          NewMemCheckCost = std::max(*NewMemCheckCost.getValue(),
+          NewMemCheckCost = std::max(NewMemCheckCost.getValue(),
                                      (InstructionCost::CostType)1);
 
           if (BestTripCount > 1)
@@ -4460,6 +4460,7 @@ static bool willGenerateVectors(VPlan &Plan, ElementCount VF,
       case VPDef::VPWidenSelectSC:
       case VPDef::VPBlendSC:
       case VPDef::VPFirstOrderRecurrencePHISC:
+      case VPDef::VPHistogramSC:
       case VPDef::VPWidenPHISC:
       case VPDef::VPWidenIntOrFpInductionSC:
       case VPDef::VPWidenPointerInductionSC:
@@ -5301,7 +5302,7 @@ LoopVectorizationCostModel::selectInterleaveCount(VPlan &Plan, ElementCount VF,
     // to estimate the cost of the loop and interleave until the cost of the
     // loop overhead is about 5% of the cost of the loop.
     unsigned SmallIC = std::min(IC, (unsigned)llvm::bit_floor<uint64_t>(
-                                        SmallLoopCost / *LoopCost.getValue()));
+                                        SmallLoopCost / LoopCost.getValue()));
 
     // Interleave until store/load ports (estimated by max interleave count) are
     // saturated.
@@ -7646,7 +7647,7 @@ InstructionCost LoopVectorizationPlanner::cost(VPlan &Plan,
   LLVM_DEBUG(dbgs() << "Cost for VF " << VF << ": " << Cost
                     << " (Estimated cost per lane: ");
   if (Cost.isValid()) {
-    double CostPerLane = double(*Cost.getValue()) / EstimatedWidth;
+    double CostPerLane = double(Cost.getValue()) / EstimatedWidth;
     LLVM_DEBUG(dbgs() << format("%.1f", CostPerLane));
   } else /* No point dividing an invalid cost - it will still be invalid */
     LLVM_DEBUG(dbgs() << "Invalid");
@@ -9055,9 +9056,13 @@ bool VPRecipeBuilder::getScaledReductions(
 
   PartialReductionChain Chain(RdxExitInstr, ExtA, ExtB, BinOp);
 
-  unsigned TargetScaleFactor =
-      PHI->getType()->getPrimitiveSizeInBits().getKnownScalarFactor(
-          A->getType()->getPrimitiveSizeInBits());
+  TypeSize PHISize = PHI->getType()->getPrimitiveSizeInBits();
+  TypeSize ASize = A->getType()->getPrimitiveSizeInBits();
+
+  if (!PHISize.hasKnownScalarFactor(ASize))
+    return false;
+
+  unsigned TargetScaleFactor = PHISize.getKnownScalarFactor(ASize);
 
   if (LoopVectorizationPlanner::getDecisionAndClampRange(
           [&](ElementCount VF) {
@@ -9347,11 +9352,8 @@ static void addScalarResumePhis(VPRecipeBuilder &Builder, VPlan &Plan,
   }
 }
 
-// Collect VPIRInstructions for phis in the exit blocks that are modeled
-// in VPlan and add the exiting VPValue as operand.
-static SetVector<VPIRInstruction *>
-collectUsersInExitBlocks(Loop *OrigLoop, VPRecipeBuilder &Builder,
-                         VPlan &Plan) {
+// Collect VPIRInstructions for phis in the exit block from the latch only.
+static SetVector<VPIRInstruction *> collectUsersInLatchExitBlock(VPlan &Plan) {
   SetVector<VPIRInstruction *> ExitUsersToFix;
   for (VPIRBasicBlock *ExitVPBB : Plan.getExitBlocks()) {
     // Nothing to do for unreachable exit blocks.
@@ -9367,11 +9369,8 @@ collectUsersInExitBlocks(Loop *OrigLoop, VPRecipeBuilder &Builder,
         continue;
       }
 
-      PHINode &ExitPhi = ExitIRI->getIRPhi();
-      BasicBlock *ExitingBB = OrigLoop->getLoopLatch();
-      Value *IncomingValue = ExitPhi.getIncomingValueForBlock(ExitingBB);
-      VPValue *V = Builder.getVPValueOrAddLiveIn(IncomingValue);
-      ExitIRI->addOperand(V);
+      assert(ExitIRI->getNumOperands() == 1 && "must have a single operand");
+      VPValue *V = ExitIRI->getOperand(0);
       if (V->isLiveIn())
         continue;
       assert(V->getDefiningRecipe()->getParent()->getEnclosingLoopRegion() &&
@@ -9400,7 +9399,7 @@ addUsersInExitBlocks(VPlan &Plan,
            ExitIRI->getParent()->getSinglePredecessor() == MiddleVPBB &&
            "exit values from early exits must be fixed when branch to "
            "early-exit is added");
-    ExitIRI->extractLastLaneOfOperand(B);
+    ExitIRI->extractLastLaneOfFirstOperand(B);
   }
 }
 
@@ -9741,7 +9740,7 @@ LoopVectorizationPlanner::tryToBuildVPlanWithVPRecipes(VFRange &Range) {
   DenseMap<VPValue *, VPValue *> IVEndValues;
   addScalarResumePhis(RecipeBuilder, *Plan, IVEndValues);
   SetVector<VPIRInstruction *> ExitUsersToFix =
-      collectUsersInExitBlocks(OrigLoop, RecipeBuilder, *Plan);
+      collectUsersInLatchExitBlock(*Plan);
   addExitUsersForFirstOrderRecurrences(*Plan, ExitUsersToFix);
   addUsersInExitBlocks(*Plan, ExitUsersToFix);
 
@@ -10457,7 +10456,7 @@ static bool isOutsideLoopWorkProfitable(GeneratedRTChecks &Checks,
 
   // The scalar cost should only be 0 when vectorizing with a user specified
   // VF/IC. In those cases, runtime checks should always be generated.
-  uint64_t ScalarC = *VF.ScalarCost.getValue();
+  uint64_t ScalarC = VF.ScalarCost.getValue();
   if (ScalarC == 0)
     return true;
 
@@ -10492,8 +10491,8 @@ static bool isOutsideLoopWorkProfitable(GeneratedRTChecks &Checks,
   // the computations are performed on doubles, not integers and the result
   // is rounded up, hence we get an upper estimate of the TC.
   unsigned IntVF = getEstimatedRuntimeVF(VF.Width, VScale);
-  uint64_t RtC = *TotalCost.getValue();
-  uint64_t Div = ScalarC * IntVF - *VF.Cost.getValue();
+  uint64_t RtC = TotalCost.getValue();
+  uint64_t Div = ScalarC * IntVF - VF.Cost.getValue();
   uint64_t MinTC1 = Div == 0 ? 0 : divideCeil(RtC * IntVF, Div);
 
   // Second, compute a minimum iteration count so that the cost of the
