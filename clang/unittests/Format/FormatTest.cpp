@@ -6481,6 +6481,18 @@ TEST_F(FormatTest, IndentPreprocessorDirectives) {
                "#if 1\n"
                "#endif",
                Style);
+
+  verifyFormat("#ifndef ABCDE\n"
+               "  #define ABCDE 0\n"
+               "#endif\n"
+               "\n"
+               "#define FGHIJK",
+               "#ifndef ABCDE\n"
+               "#define ABCDE 0\n"
+               "#endif\n"
+               "\n"
+               "#define FGHIJK",
+               Style);
 }
 
 TEST_F(FormatTest, FormatAlignInsidePreprocessorElseBlock) {

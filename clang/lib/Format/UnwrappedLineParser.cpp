@@ -294,6 +294,7 @@ void UnwrappedLineParser::parseCSharpGenericTypeConstraint() {
   do {
     switch (FormatTok->Tok.getKind()) {
     case tok::l_brace:
+    case tok::semi:
       return;
     default:
       if (FormatTok->is(Keywords.kw_where)) {
@@ -1155,6 +1156,7 @@ void UnwrappedLineParser::parsePPDefine() {
     return;
   }
 
+  bool MaybeIncludeGuard = false;
   if (IncludeGuard == IG_IfNdefed &&
       IncludeGuardToken->TokenText == FormatTok->TokenText) {
     IncludeGuard = IG_Defined;
@@ -1165,6 +1167,7 @@ void UnwrappedLineParser::parsePPDefine() {
         break;
       }
     }
+    MaybeIncludeGuard = IncludeGuard == IG_Defined;
   }
 
   // In the context of a define, even keywords should be treated as normal
@@ -1175,6 +1178,11 @@ void UnwrappedLineParser::parsePPDefine() {
   FormatTok->Tok.setKind(tok::identifier);
   FormatTok->Tok.setIdentifierInfo(Keywords.kw_internal_ident_after_define);
   nextToken();
+
+  // IncludeGuard can't have a non-empty macro definition.
+  if (MaybeIncludeGuard && !eof())
+    IncludeGuard = IG_Rejected;
+
   if (FormatTok->Tok.getKind() == tok::l_paren &&
       !FormatTok->hasWhitespaceBefore()) {
     parseParens();
@@ -1348,7 +1356,7 @@ bool UnwrappedLineParser::parseModuleImport() {
     // Handle import <foo/bar.h> as we would an include statement.
     else if (FormatTok->is(tok::less)) {
       nextToken();
-      while (!FormatTok->isOneOf(tok::semi, tok::greater, tok::eof)) {
+      while (!FormatTok->isOneOf(tok::semi, tok::greater) && !eof()) {
         // Mark tokens up to the trailing line comments as implicit string
         // literals.
         if (FormatTok->isNot(tok::comment) &&
@@ -3095,7 +3103,7 @@ void UnwrappedLineParser::parseTryCatch() {
         parseParens();
         continue;
       }
-      if (FormatTok->isOneOf(tok::semi, tok::r_brace, tok::eof)) {
+      if (FormatTok->isOneOf(tok::semi, tok::r_brace) || eof()) {
         if (Style.RemoveBracesLLVM)
           NestedTooDeep.pop_back();
         return;

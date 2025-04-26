@@ -140,6 +140,13 @@ C Language Changes
 - Clang now allows an ``inline`` specifier on a typedef declaration of a
   function type in Microsoft compatibility mode. #GH124869
 - Clang now allows ``restrict`` qualifier for array types with pointer elements (#GH92847).
+- Clang now diagnoses ``const``-qualified object definitions without an
+  initializer. If the object is zero-initialized, it will be diagnosed under
+  the new warning ``-Wdefault-const-init`` (which is grouped under
+  ``-Wc++-compat`` because this construct is not compatible with C++). If the
+  object is left uninitialized, it will be diagnosed unsed the new warning
+  ``-Wdefault-const-init-unsafe`` (which is grouped under
+  ``-Wdefault-const-init``). #GH19297
 - Added ``-Wimplicit-void-ptr-cast``, grouped under ``-Wc++-compat``, which
   diagnoses implicit conversion from ``void *`` to another pointer type as
   being incompatible with C++. (#GH17792)
@@ -227,6 +234,8 @@ Modified Compiler Flags
 - The compiler flag `-fbracket-depth` default value is increased from 256 to 2048. (#GH94728)
 
 - `-Wpadded` option implemented for the `x86_64-windows-msvc` target. Fixes #61702
+
+- The ``-mexecute-only`` and ``-mpure-code`` flags are now accepted for AArch64 targets. (#GH125688)
 
 Removed Compiler Flags
 -------------------------
@@ -458,6 +467,9 @@ Bug Fixes in This Version
   using C++23 "deducing this" did not have a diagnostic location (#GH135522)
 
 - Fixed a crash when a ``friend`` function is redefined as deleted. (#GH135506)
+- Fixed a crash when ``#embed`` appears as a part of a failed constant
+  evaluation. The crashes were happening during diagnostics emission due to
+  unimplemented statement printer. (#GH132641)
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -500,9 +512,11 @@ Bug Fixes to C++ Support
   by template argument deduction.
 - Clang is now better at instantiating the function definition after its use inside
   of a constexpr lambda. (#GH125747)
+- Fixed a local class member function instantiation bug inside dependent lambdas. (#GH59734), (#GH132208)
 - Clang no longer crashes when trying to unify the types of arrays with
   certain differences in qualifiers (this could happen during template argument
   deduction or when building a ternary operator). (#GH97005)
+- Fixed type alias CTAD issues involving default template arguments. (#GH134471)
 - The initialization kind of elements of structured bindings
   direct-list-initialized from an array is corrected to direct-initialization.
 - Clang no longer crashes when a coroutine is declared ``[[noreturn]]``. (#GH127327)
@@ -596,6 +610,9 @@ Arm and AArch64 Support
 
 -  Support for __ptrauth type qualifier has been added.
 
+- For AArch64, added support for generating executable-only code sections by using the
+  ``-mexecute-only`` or ``-mpure-code`` compiler flags. (#GH125688)
+
 Android Support
 ^^^^^^^^^^^^^^^
 
@@ -617,6 +634,12 @@ RISC-V Support
 ^^^^^^^^^^^^^^
 
 - Add support for `-mtune=generic-ooo` (a generic out-of-order model).
+- Adds support for `__attribute__((interrupt("SiFive-CLIC-preemptible")))` and
+  `__attribute__((interrupt("SiFive-CLIC-stack-swap")))`. The former
+  automatically saves some interrupt CSRs before re-enabling interrupts in the
+  function prolog, the latter swaps `sp` with the value in a CSR before it is
+  used or modified. These two can also be combined, and can be combined with
+  `interrupt("machine")`.
 
 - Adds support for `__attribute__((interrupt("qci-nest")))` and
   `__attribute__((interrupt("qci-nonest")))`. These use instructions from
