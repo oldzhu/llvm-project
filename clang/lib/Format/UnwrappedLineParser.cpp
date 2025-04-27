@@ -2088,7 +2088,13 @@ void UnwrappedLineParser::parseStructuralElement(
       parseSquare();
       break;
     case tok::kw_new:
-      parseNew();
+      if (Style.isCSharp() &&
+          (Tokens->peekNextToken()->isAccessSpecifierKeyword() ||
+           (Previous && Previous->isAccessSpecifierKeyword()))) {
+        nextToken();
+      } else {
+        parseNew();
+      }
       break;
     case tok::kw_switch:
       if (Style.isJava())
