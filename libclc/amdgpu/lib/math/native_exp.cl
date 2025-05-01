@@ -6,8 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <clc/clc.h>
+#ifndef __CLC_MATH_CLC_EXP_HELPER
+#define __CLC_MATH_CLC_EXP_HELPER
 
-#define __CLC_BODY <native_exp.inc>
-#define __FLOAT_ONLY
+#define __DOUBLE_ONLY
+#define __CLC_BODY <clc/math/clc_exp_helper.inc>
+
 #include <clc/math/gentype.inc>
+
+#undef __DOUBLE_ONLY
+
+#endif // __CLC_MATH_CLC_EXP_HELPER

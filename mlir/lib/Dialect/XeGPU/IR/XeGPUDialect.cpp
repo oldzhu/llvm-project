@@ -11,6 +11,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include <numeric>
 
 using std::optional;
 
@@ -373,76 +374,6 @@ LogicalResult TensorDescType::verify(
     }
   }
   return success();
-}
-
-// If tensor descriptor has a layout attribute it is used in SIMT mode.
-// In this mode, the distributed vector shape is determined as follows:
-// Definitions:
-//        lane_data_size = lane_data[0] × lane_data[1]
-//        subgroup_size = lane_layout[0] × lane_layout[1]
-//        distribution_unit_size = subgroup_size × lane_data_size
-// ---------------------------------------------------------------------
-// Case 1: Regular loads/stores.
-// ---------------------------------------------------------------------
-// Distributed vector shape must be:
-//        [chunk_size / lane_data_size, lane_data_size]
-// If the tensor descriptor shape is 1D, first dimension is ignored (set to 1).
-//        [lane_data_size]
-// ---------------------------------------------------------------------
-// Case 2: Block loads/stores
-// ---------------------------------------------------------------------
-// Additional definitions:
-//        tensor_size = tensor_desc[0] * .. * tensor_desc[r-1] * array_length
-//        n_distribution_units = tensor_size / distribution_unit_size
-// Given above definitions, the following conditions must be met:
-//        * tensor_desc[0] % (lane_layout[0] × lane_data[0]) == 0
-//        * tensor_desc[1] % (lane_layout[1] × lane_data[1]) == 0
-// Distributed vector shape must be:
-//        [n_distribution_units, lane_data_size]
-FailureOr<VectorType> TensorDescType::getDistributedVectorType() {
-  auto layout = llvm::dyn_cast_if_present<LayoutAttr>(getLayout());
-  // If no layout is provided, tensor desc is not used in SIMT mode.
-  if (!layout)
-    return failure();
-
-  SmallVector<int64_t> laneData(layout.getLaneData().asArrayRef());
-  SmallVector<int64_t> laneLayout(layout.getLaneLayout().asArrayRef());
-  auto tdescShape = getShape();
-
-  auto laneDataSize = 1, sgSize = 1;
-  for (auto [laneDim, laneDataDim] : llvm::zip_equal(laneLayout, laneData)) {
-    laneDataSize *= laneDataDim;
-    sgSize *= laneDim;
-  }
-
-  // Case 1: regular loads/stores
-  auto scatterAttr = getEncodingAsScatterTensorDescAttr();
-  if (scatterAttr) {
-    auto chunkSize = scatterAttr.getChunkSize().getInt();
-    // Verify if the first dimension of the tensor descriptor shape is
-    // distributable.
-    assert(tdescShape[0] % (laneLayout[0]) == 0 &&
-           "tensor descriptor shape is not distributable");
-    if (chunkSize > 1)
-      return VectorType::get({chunkSize / laneDataSize, laneDataSize},
-                             getElementType());
-    return VectorType::get({laneDataSize}, getElementType());
-  }
-
-  // Case 2: block loads/stores
-  // Check if the tensor descriptor shape is distributable.
-  int64_t tensorSize = 1;
-  for (auto [tdescDim, laneDim, laneDataDim] :
-       llvm::zip_equal(tdescShape, laneLayout, laneData)) {
-    assert((tdescDim % (laneDim * laneDataDim) == 0) &&
-           "tensor descriptor shape is not distributable");
-    tensorSize *= tdescDim;
-  }
-  // tensorSize must be adjusted for array_length.
-  tensorSize *= getArrayLength();
-
-  return VectorType::get({tensorSize / (sgSize * laneDataSize), laneDataSize},
-                         getElementType());
 }
 
 } // namespace xegpu
