@@ -258,9 +258,20 @@ void CIRGenFunction::emitStoreOfScalar(mlir::Value value, Address addr,
                                        bool isInit, bool isNontemporal) {
   assert(!cir::MissingFeatures::opLoadStoreThreadLocal());
 
-  if (ty->getAs<clang::VectorType>()) {
-    cgm.errorNYI(addr.getPointer().getLoc(), "emitStoreOfScalar vector type");
-    return;
+  if (const auto *clangVecTy = ty->getAs<clang::VectorType>()) {
+    // Boolean vectors use `iN` as storage type.
+    if (clangVecTy->isExtVectorBoolType())
+      cgm.errorNYI(addr.getPointer().getLoc(),
+                   "emitStoreOfScalar ExtVectorBoolType");
+
+    // Handle vectors of size 3 like size 4 for better performance.
+    const mlir::Type elementType = addr.getElementType();
+    const auto vecTy = cast<cir::VectorType>(elementType);
+
+    // TODO(CIR): Use `ABIInfo::getOptimalVectorMemoryType` once it upstreamed
+    if (vecTy.getSize() == 3 && !getLangOpts().PreserveVec3Type)
+      cgm.errorNYI(addr.getPointer().getLoc(),
+                   "emitStoreOfScalar Vec3 & PreserveVec3Type disabled");
   }
 
   value = emitToMemory(value, ty);
@@ -836,23 +847,41 @@ static CIRGenCallee emitDirectCallee(CIRGenModule &cgm, GlobalDecl gd) {
   return CIRGenCallee::forDirect(callee, gd);
 }
 
+RValue CIRGenFunction::getUndefRValue(QualType ty) {
+  if (ty->isVoidType())
+    return RValue::get(nullptr);
+
+  cgm.errorNYI("unsupported type for undef rvalue");
+  return RValue::get(nullptr);
+}
+
 RValue CIRGenFunction::emitCall(clang::QualType calleeTy,
                                 const CIRGenCallee &callee,
-                                const clang::CallExpr *e) {
+                                const clang::CallExpr *e,
+                                ReturnValueSlot returnValue) {
   // Get the actual function type. The callee type will always be a pointer to
   // function type or a block pointer type.
   assert(calleeTy->isFunctionPointerType() &&
          "Callee must have function pointer type!");
 
   calleeTy = getContext().getCanonicalType(calleeTy);
+  auto pointeeTy = cast<PointerType>(calleeTy)->getPointeeType();
 
   if (getLangOpts().CPlusPlus)
     assert(!cir::MissingFeatures::sanitizers());
 
-  assert(!cir::MissingFeatures::sanitizers());
-  assert(!cir::MissingFeatures::opCallArgs());
+  const auto *fnType = cast<FunctionType>(pointeeTy);
 
-  const CIRGenFunctionInfo &funcInfo = cgm.getTypes().arrangeFreeFunctionCall();
+  assert(!cir::MissingFeatures::sanitizers());
+
+  CallArgList args;
+  assert(!cir::MissingFeatures::opCallArgEvaluationOrder());
+
+  emitCallArgs(args, dyn_cast<FunctionProtoType>(fnType), e->arguments(),
+               e->getDirectCallee());
+
+  const CIRGenFunctionInfo &funcInfo =
+      cgm.getTypes().arrangeFreeFunctionCall(args, fnType);
 
   assert(!cir::MissingFeatures::opCallNoPrototypeFunc());
   assert(!cir::MissingFeatures::opCallChainCall());
@@ -860,8 +889,8 @@ RValue CIRGenFunction::emitCall(clang::QualType calleeTy,
   assert(!cir::MissingFeatures::opCallMustTail());
 
   cir::CIRCallOpInterface callOp;
-  RValue callResult =
-      emitCall(funcInfo, callee, &callOp, getLoc(e->getExprLoc()));
+  RValue callResult = emitCall(funcInfo, callee, returnValue, args, &callOp,
+                               getLoc(e->getExprLoc()));
 
   assert(!cir::MissingFeatures::generateDebugInfo());
 
@@ -887,7 +916,8 @@ CIRGenCallee CIRGenFunction::emitCallee(const clang::Expr *e) {
   return {};
 }
 
-RValue CIRGenFunction::emitCallExpr(const clang::CallExpr *e) {
+RValue CIRGenFunction::emitCallExpr(const clang::CallExpr *e,
+                                    ReturnValueSlot returnValue) {
   assert(!cir::MissingFeatures::objCBlocks());
 
   if (isa<CXXMemberCallExpr>(e)) {
@@ -919,7 +949,7 @@ RValue CIRGenFunction::emitCallExpr(const clang::CallExpr *e) {
   }
   assert(!cir::MissingFeatures::opCallPseudoDtor());
 
-  return emitCall(e->getCallee()->getType(), callee, e);
+  return emitCall(e->getCallee()->getType(), callee, e, returnValue);
 }
 
 /// Emit code to compute the specified expression, ignoring the result.

@@ -214,13 +214,15 @@ public:
   // Call operators
   //===--------------------------------------------------------------------===//
 
-  cir::CallOp createCallOp(mlir::Location loc, mlir::SymbolRefAttr callee) {
-    auto op = create<cir::CallOp>(loc, callee);
-    return op;
+  cir::CallOp createCallOp(mlir::Location loc, mlir::SymbolRefAttr callee,
+                           mlir::Type returnType, mlir::ValueRange operands) {
+    return create<cir::CallOp>(loc, callee, returnType, operands);
   }
 
-  cir::CallOp createCallOp(mlir::Location loc, cir::FuncOp callee) {
-    return createCallOp(loc, mlir::SymbolRefAttr::get(callee));
+  cir::CallOp createCallOp(mlir::Location loc, cir::FuncOp callee,
+                           mlir::ValueRange operands) {
+    return createCallOp(loc, mlir::SymbolRefAttr::get(callee),
+                        callee.getFunctionType().getReturnType(), operands);
   }
 
   //===--------------------------------------------------------------------===//

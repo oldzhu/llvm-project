@@ -14,9 +14,13 @@ using namespace clang::CIRGen;
 
 CIRGenTypes::CIRGenTypes(CIRGenModule &genModule)
     : cgm(genModule), astContext(genModule.getASTContext()),
-      builder(cgm.getBuilder()) {}
+      builder(cgm.getBuilder()),
+      theABIInfo(cgm.getTargetCIRGenInfo().getABIInfo()) {}
 
-CIRGenTypes::~CIRGenTypes() {}
+CIRGenTypes::~CIRGenTypes() {
+  for (auto i = functionInfos.begin(), e = functionInfos.end(); i != e;)
+    delete &*i++;
+}
 
 mlir::MLIRContext &CIRGenTypes::getMLIRContext() const {
   return *builder.getContext();
@@ -507,10 +511,14 @@ bool CIRGenTypes::isZeroInitializable(clang::QualType t) {
   return true;
 }
 
-const CIRGenFunctionInfo &CIRGenTypes::arrangeCIRFunctionInfo() {
+const CIRGenFunctionInfo &CIRGenTypes::arrangeCIRFunctionInfo(
+    CanQualType returnType, llvm::ArrayRef<clang::CanQualType> argTypes) {
+  assert(llvm::all_of(argTypes,
+                      [](CanQualType T) { return T.isCanonicalAsParam(); }));
+
   // Lookup or create unique function info.
   llvm::FoldingSetNodeID id;
-  CIRGenFunctionInfo::Profile(id);
+  CIRGenFunctionInfo::Profile(id, returnType, argTypes);
 
   void *insertPos = nullptr;
   CIRGenFunctionInfo *fi = functionInfos.FindNodeOrInsertPos(id, insertPos);
@@ -520,7 +528,7 @@ const CIRGenFunctionInfo &CIRGenTypes::arrangeCIRFunctionInfo() {
   assert(!cir::MissingFeatures::opCallCallConv());
 
   // Construction the function info. We co-allocate the ArgInfos.
-  fi = CIRGenFunctionInfo::create();
+  fi = CIRGenFunctionInfo::create(returnType, argTypes);
   functionInfos.InsertNode(fi, insertPos);
 
   bool inserted = functionsBeingProcessed.insert(fi).second;
@@ -528,7 +536,18 @@ const CIRGenFunctionInfo &CIRGenTypes::arrangeCIRFunctionInfo() {
   assert(inserted && "Are functions being processed recursively?");
 
   assert(!cir::MissingFeatures::opCallCallConv());
-  assert(!cir::MissingFeatures::opCallArgs());
+  getABIInfo().computeInfo(*fi);
+
+  // Loop over all of the computed argument and return value info. If any of
+  // them are direct or extend without a specified coerce type, specify the
+  // default now.
+  cir::ABIArgInfo &retInfo = fi->getReturnInfo();
+  if (retInfo.canHaveCoerceToType() && retInfo.getCoerceToType() == nullptr)
+    retInfo.setCoerceToType(convertType(fi->getReturnType()));
+
+  for (CIRGenFunctionInfoArgInfo &i : fi->arguments())
+    if (i.info.canHaveCoerceToType() && i.info.getCoerceToType() == nullptr)
+      i.info.setCoerceToType(convertType(i.type));
 
   bool erased = functionsBeingProcessed.erase(fi);
   (void)erased;
