@@ -4896,8 +4896,8 @@ bool Type::canHaveNullability(bool ResultIfUnknown) const {
   QualType type = getCanonicalTypeInternal();
 
   switch (type->getTypeClass()) {
-    // We'll only see canonical types here.
 #define NON_CANONICAL_TYPE(Class, Parent)                                      \
+  /* We'll only see canonical types here. */                                   \
   case Type::Class:                                                            \
     llvm_unreachable("non-canonical type");
 #define TYPE(Class, Parent)
