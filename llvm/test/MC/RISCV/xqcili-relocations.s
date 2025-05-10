@@ -10,6 +10,8 @@
 
 .text
 
+.option exact
+
 qc.li x4, %qc.abs20(foo)
 # RELOC: R_RISCV_CUSTOM192 foo 0x0
 # INSTR: qc.li tp, %qc.abs20(foo)
@@ -39,6 +41,8 @@ qc.li x7, %qc.abs20(.L1)
 qc.e.li x6, .L1
 # INSTR: qc.e.li t1, .L1
 # FIXUP: fixup A - offset: 0, value: .L1, kind: fixup_riscv_qc_e_32
+
+.option noexact
 
 .L1:
   ret
