@@ -302,7 +302,6 @@ def XeGPU_LayoutAttr : XeGPUAttr<"Layout", "layout"> {
       return LayoutAttr::get(getContext(), getSgLayout(), getSgData(), nullptr,
                              getLaneLayout(), getLaneData(), getOrder());
     }
-
   }];
 
   let assemblyFormat = "`<` struct(params) `>`";

@@ -2673,8 +2673,9 @@ ModuleImport::convertParameterAttribute(llvm::AttributeSet llvmParamAttrs,
       const llvm::ConstantRange &value = llvmAttr.getValueAsConstantRange();
       mlirAttr = builder.getAttr<LLVM::ConstantRangeAttr>(value.getLower(),
                                                           value.getUpper());
-    } else
+    } else {
       llvm_unreachable("unexpected parameter attribute kind");
+    }
     paramAttrs.push_back(builder.getNamedAttr(mlirName, mlirAttr));
   }
 
