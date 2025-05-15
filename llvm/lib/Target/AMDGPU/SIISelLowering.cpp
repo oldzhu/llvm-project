@@ -919,9 +919,8 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::BUILD_VECTOR, MVT::v2bf16, Legal);
   }
 
-  if (Subtarget->hasCvtPkF16F32Inst()) {
-    setOperationAction(ISD::FP_ROUND, MVT::v2f16, Legal);
-  }
+  if (Subtarget->hasCvtPkF16F32Inst())
+    setOperationAction(ISD::FP_ROUND, MVT::v2f16, Custom);
 
   setTargetDAGCombine({ISD::ADD,
                        ISD::UADDO_CARRY,
@@ -6903,10 +6902,16 @@ SDValue SITargetLowering::getFPExtOrFPRound(SelectionDAG &DAG, SDValue Op,
 SDValue SITargetLowering::lowerFP_ROUND(SDValue Op, SelectionDAG &DAG) const {
   SDValue Src = Op.getOperand(0);
   EVT SrcVT = Src.getValueType();
+  EVT DstVT = Op.getValueType();
+
+  if (DstVT == MVT::v2f16) {
+    assert(Subtarget->hasCvtPkF16F32Inst() && "support v_cvt_pk_f16_f32");
+    return SrcVT == MVT::v2f32 ? Op : SDValue();
+  }
+
   if (SrcVT.getScalarType() != MVT::f64)
     return Op;
 
-  EVT DstVT = Op.getValueType();
   SDLoc DL(Op);
   if (DstVT == MVT::f16) {
     // TODO: Handle strictfp
@@ -16545,7 +16550,8 @@ Align SITargetLowering::computeKnownAlignForTargetInstr(
     // site specifies a lower alignment?
     Intrinsic::ID IID = GI->getIntrinsicID();
     LLVMContext &Ctx = VT.getMachineFunction().getFunction().getContext();
-    AttributeList Attrs = Intrinsic::getAttributes(Ctx, IID);
+    AttributeList Attrs =
+        Intrinsic::getAttributes(Ctx, IID, Intrinsic::getType(Ctx, IID));
     if (MaybeAlign RetAlign = Attrs.getRetAlignment())
       return *RetAlign;
   }

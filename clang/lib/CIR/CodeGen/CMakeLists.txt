@@ -34,6 +34,7 @@ add_clang_library(clangCIR
   clangBasic
   clangLex
   ${dialect_libs}
+  CIROpenACCSupport
   MLIRCIR
   MLIRCIRInterfaces
 )
