@@ -1351,12 +1351,6 @@ void ELFObjectWriter::recordRelocation(MCAssembler &Asm,
   uint64_t FixupOffset = Asm.getFragmentOffset(*Fragment) + Fixup.getOffset();
   uint64_t Addend = Target.getConstant();
   if (auto *RefB = Target.getSubSym()) {
-    // When there is no relocation specifier, a linker relaxation target may
-    // emit ADD/SUB relocations for A-B+C.
-    if (SymA && Backend.handleAddSubRelocations(Asm, *Fragment, Fixup, Target,
-                                                FixedValue))
-      return;
-
     const auto &SymB = cast<MCSymbolELF>(*RefB);
     if (SymB.isUndefined()) {
       Ctx.reportError(Fixup.getLoc(),
@@ -1401,12 +1395,6 @@ void ELFObjectWriter::recordRelocation(MCAssembler &Asm,
     SymA = cast<MCSymbolELF>(SecA->getBeginSymbol());
     SymA->setUsedInReloc();
   } else {
-    // In PPC64 ELFv1, .quad .TOC.@tocbase in the .opd section is expected to
-    // reference the null symbol.
-    if (Type == ELF::R_PPC64_TOC &&
-        TargetObjectWriter->getEMachine() == ELF::EM_PPC64)
-      SymA = nullptr;
-
     if (SymA) {
       if (const MCSymbolELF *R = Renames.lookup(SymA))
         SymA = R;
