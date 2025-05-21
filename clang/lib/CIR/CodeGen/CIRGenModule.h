@@ -22,6 +22,7 @@
 #include "clang/CIR/Dialect/IR/CIRDataLayout.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 
+#include "TargetInfo.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -62,6 +63,8 @@ public:
   ~CIRGenModule();
 
 private:
+  mutable std::unique_ptr<TargetCIRGenInfo> theTargetCIRGenInfo;
+
   CIRGenBuilderTy builder;
 
   /// Hold Clang AST information.
@@ -90,6 +93,7 @@ public:
   mlir::ModuleOp getModule() const { return theModule; }
   CIRGenBuilderTy &getBuilder() { return builder; }
   clang::ASTContext &getASTContext() const { return astContext; }
+  const clang::TargetInfo &getTarget() const { return target; }
   const clang::CodeGenOptions &getCodeGenOpts() const { return codeGenOpts; }
   CIRGenTypes &getTypes() { return genTypes; }
   const clang::LangOptions &getLangOpts() const { return langOpts; }
@@ -122,6 +126,9 @@ public:
                                       llvm::StringRef name, mlir::Type t,
                                       mlir::Operation *insertPoint = nullptr);
 
+  llvm::StringMap<unsigned> cgGlobalNames;
+  std::string getUniqueGlobalName(const std::string &baseName);
+
   /// Return the mlir::Value for the address of the given global variable.
   /// If Ty is non-null and if the global doesn't exist, then it will be created
   /// with the specified type instead of whatever the normal requested type
@@ -131,6 +138,16 @@ public:
   mlir::Value
   getAddrOfGlobalVar(const VarDecl *d, mlir::Type ty = {},
                      ForDefinition_t isForDefinition = NotForDefinition);
+
+  /// Return a constant array for the given string.
+  mlir::Attribute getConstantArrayFromStringLiteral(const StringLiteral *e);
+
+  /// Return a global symbol reference to a constant array for the given string
+  /// literal.
+  cir::GlobalOp getGlobalForStringLiteral(const StringLiteral *s,
+                                          llvm::StringRef name = ".str");
+
+  const TargetCIRGenInfo &getTargetCIRGenInfo();
 
   /// Helpers to convert the presumed location of Clang's SourceLocation to an
   /// MLIR Location.
