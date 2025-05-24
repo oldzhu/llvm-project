@@ -4361,6 +4361,8 @@ void OverflowTracking::mergeFlags(Instruction &I) {
     HasNUW &= I.hasNoUnsignedWrap();
     HasNSW &= I.hasNoSignedWrap();
   }
+  if (auto *DisjointOp = dyn_cast<PossiblyDisjointInst>(&I))
+    IsDisjoint &= DisjointOp->isDisjoint();
 }
 
 void OverflowTracking::applyFlags(Instruction &I) {
@@ -4372,4 +4374,6 @@ void OverflowTracking::applyFlags(Instruction &I) {
     if (HasNSW && (AllKnownNonNegative || HasNUW))
       I.setHasNoSignedWrap();
   }
+  if (auto *DisjointOp = dyn_cast<PossiblyDisjointInst>(&I))
+    DisjointOp->setIsDisjoint(IsDisjoint);
 }
