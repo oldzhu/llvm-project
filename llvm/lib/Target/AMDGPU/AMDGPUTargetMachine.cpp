@@ -1128,6 +1128,7 @@ GCNTargetMachine::createPostMachineScheduler(MachineSchedContext *C) const {
        getOptLevel() >= CodeGenOptLevel::Less) &&
       EnableVOPD)
     DAG->addMutation(createVOPDPairingMutation());
+  DAG->addMutation(createAMDGPUExportClusteringDAGMutation());
   return DAG;
 }
 //===----------------------------------------------------------------------===//

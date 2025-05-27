@@ -8219,6 +8219,53 @@ cc_library(
 )
 
 cc_library(
+    name = "IRDLToCpp",
+    srcs = [
+        "lib/Target/IRDLToCpp/IRDLToCpp.cpp",
+        "lib/Target/IRDLToCpp/TemplatingUtils.h",
+    ],
+    hdrs = [
+        "include/mlir/Target/IRDLToCpp/IRDLToCpp.h",
+    ],
+    includes = ["include"],
+    textual_hdrs = glob(["lib/Target/IRDLToCpp/Templates/*.txt"]),
+    deps = [
+        ":IRDLDialect",
+        ":Support",
+        "//llvm:Support",
+    ],
+)
+
+cc_binary(
+    name = "irdl-to-cpp",
+    srcs = [
+        "tools/mlir-irdl-to-cpp/mlir-irdl-to-cpp.cpp",
+    ],
+    deps = [
+        ":IR",
+        ":IRDLDialect",
+        ":IRDLToCpp",
+        ":ParseUtilities",
+        ":Support",
+        "//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "IRDLToCppTranslationRegistration",
+    srcs = ["lib/Target/IRDLToCpp/TranslationRegistration.cpp"],
+    hdrs = ["include/mlir/Target/IRDLToCpp/TranslationRegistration.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":IRDLDialect",
+        ":IRDLToCpp",
+        ":TranslateLib",
+        "//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "ToLLVMIRTranslation",
     srcs = [
         "lib/Target/LLVMIR/AttrKindDetail.h",
@@ -8668,6 +8715,7 @@ cc_library(
     hdrs = ["include/mlir/InitAllTranslations.h"],
     deps = [
         ":FromLLVMIRTranslationRegistration",
+        ":IRDLToCppTranslationRegistration",
         ":SPIRVTranslateRegistration",
         ":TargetCpp",
         ":TargetSMTLIB",
@@ -8899,6 +8947,7 @@ cc_binary(
         "//mlir/test:TestFuncToLLVM",
         "//mlir/test:TestGPU",
         "//mlir/test:TestIR",
+        "//mlir/test:TestIRDLToCpp",
         "//mlir/test:TestLLVM",
         "//mlir/test:TestLinalg",
         "//mlir/test:TestLoopLikeInterface",
