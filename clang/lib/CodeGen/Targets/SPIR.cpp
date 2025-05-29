@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ABIInfoImpl.h"
+#include "HLSLBufferLayoutBuilder.h"
 #include "TargetInfo.h"
 
 using namespace clang;
@@ -488,9 +489,19 @@ llvm::Type *CommonSPIRTargetCodeGenInfo::getHLSLType(
     llvm::Type *ElemType = CGM.getTypes().ConvertType(ContainedTy);
     return getSPIRVImageTypeFromHLSLResource(ResAttrs, ElemType, Ctx);
   }
-  case llvm::dxil::ResourceClass::CBuffer:
-    llvm_unreachable("CBuffer handles are not implemented for SPIR-V yet");
+  case llvm::dxil::ResourceClass::CBuffer: {
+    QualType ContainedTy = ResType->getContainedType();
+    if (ContainedTy.isNull() || !ContainedTy->isStructureType())
+      return nullptr;
+
+    llvm::Type *BufferLayoutTy =
+        HLSLBufferLayoutBuilder(CGM, "spirv.Layout")
+            .createLayoutType(ContainedTy->getAsStructureType(), Packoffsets);
+    uint32_t StorageClass = /* Uniform storage class */ 2;
+    return llvm::TargetExtType::get(Ctx, "spirv.VulkanBuffer", {BufferLayoutTy},
+                                    {StorageClass, false});
     break;
+  }
   case llvm::dxil::ResourceClass::Sampler:
     return llvm::TargetExtType::get(Ctx, "spirv.Sampler");
   }

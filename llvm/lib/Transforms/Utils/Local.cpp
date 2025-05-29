@@ -4357,6 +4357,13 @@ bool llvm::inferAttributesFromOthers(Function &F) {
 }
 
 void OverflowTracking::mergeFlags(Instruction &I) {
+#ifndef NDEBUG
+  if (Opcode)
+    assert(Opcode == I.getOpcode() &&
+           "can only use mergeFlags on instructions with matching opcodes");
+  else
+    Opcode = I.getOpcode();
+#endif
   if (isa<OverflowingBinaryOperator>(&I)) {
     HasNUW &= I.hasNoUnsignedWrap();
     HasNSW &= I.hasNoSignedWrap();
