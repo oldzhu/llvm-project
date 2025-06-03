@@ -66,6 +66,7 @@
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -120,8 +121,7 @@ namespace llvm {
 extern FunctionSummary::ForceSummaryHotnessType ForceSummaryEdgesCold;
 }
 
-extern bool WriteNewDbgInfoFormatToBitcode;
-extern llvm::cl::opt<bool> UseNewDbgInfoFormat;
+LLVM_ABI extern llvm::cl::opt<bool> UseNewDbgInfoFormat;
 
 namespace {
 
@@ -3728,7 +3728,7 @@ void ModuleBitcodeWriter::writeFunction(
       // they come after the instruction so that it's easy to attach them again
       // when reading the bitcode, even though conceptually the debug locations
       // start "before" the instruction.
-      if (I.hasDbgRecords() && WriteNewDbgInfoFormatToBitcode) {
+      if (I.hasDbgRecords()) {
         /// Try to push the value only (unwrapped), otherwise push the
         /// metadata wrapped value. Returns true if the value was pushed
         /// without the ValueAsMetadata wrapper.
