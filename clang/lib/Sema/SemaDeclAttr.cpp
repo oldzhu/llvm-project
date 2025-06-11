@@ -135,13 +135,13 @@ bool Sema::checkStringLiteralArgumentAttr(const ParsedAttr &AL, unsigned ArgNum,
   // Look for identifiers. If we have one emit a hint to fix it to a literal.
   if (AL.isArgIdent(ArgNum)) {
     IdentifierLoc *Loc = AL.getArgAsIdent(ArgNum);
-    Diag(Loc->Loc, diag::err_attribute_argument_type)
+    Diag(Loc->getLoc(), diag::err_attribute_argument_type)
         << AL << AANT_ArgumentString
-        << FixItHint::CreateInsertion(Loc->Loc, "\"")
-        << FixItHint::CreateInsertion(getLocForEndOfToken(Loc->Loc), "\"");
-    Str = Loc->Ident->getName();
+        << FixItHint::CreateInsertion(Loc->getLoc(), "\"")
+        << FixItHint::CreateInsertion(getLocForEndOfToken(Loc->getLoc()), "\"");
+    Str = Loc->getIdentifierInfo()->getName();
     if (ArgLocation)
-      *ArgLocation = Loc->Loc;
+      *ArgLocation = Loc->getLoc();
     return true;
   }
 
@@ -768,7 +768,7 @@ static void handleDiagnoseAsBuiltinAttr(Sema &S, Decl *D,
       auto Union = AL.getArg(Index - 1);
       if (auto *E = dyn_cast<Expr *>(Union))
         return E->getBeginLoc();
-      return cast<IdentifierLoc *>(Union)->Loc;
+      return cast<IdentifierLoc *>(Union)->getLoc();
     }();
 
     S.Diag(Loc, diag::err_attribute_argument_n_type) << AL << Index << T;
@@ -974,10 +974,10 @@ static void handleConsumableAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
   if (AL.isArgIdent(0)) {
     IdentifierLoc *IL = AL.getArgAsIdent(0);
-    if (!ConsumableAttr::ConvertStrToConsumedState(IL->Ident->getName(),
-                                                   DefaultState)) {
-      S.Diag(IL->Loc, diag::warn_attribute_type_not_supported) << AL
-                                                               << IL->Ident;
+    if (!ConsumableAttr::ConvertStrToConsumedState(
+            IL->getIdentifierInfo()->getName(), DefaultState)) {
+      S.Diag(IL->getLoc(), diag::warn_attribute_type_not_supported)
+          << AL << IL->getIdentifierInfo();
       return;
     }
   } else {
@@ -1019,8 +1019,8 @@ static void handleCallableWhenAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     SourceLocation Loc;
     if (AL.isArgIdent(ArgIndex)) {
       IdentifierLoc *Ident = AL.getArgAsIdent(ArgIndex);
-      StateString = Ident->Ident->getName();
-      Loc = Ident->Loc;
+      StateString = Ident->getIdentifierInfo()->getName();
+      Loc = Ident->getLoc();
     } else {
       if (!S.checkStringLiteralArgumentAttr(AL, ArgIndex, StateString, &Loc))
         return;
@@ -1044,11 +1044,11 @@ static void handleParamTypestateAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
   if (AL.isArgIdent(0)) {
     IdentifierLoc *Ident = AL.getArgAsIdent(0);
-    StringRef StateString = Ident->Ident->getName();
+    StringRef StateString = Ident->getIdentifierInfo()->getName();
 
     if (!ParamTypestateAttr::ConvertStrToConsumedState(StateString,
                                                        ParamState)) {
-      S.Diag(Ident->Loc, diag::warn_attribute_type_not_supported)
+      S.Diag(Ident->getLoc(), diag::warn_attribute_type_not_supported)
           << AL << StateString;
       return;
     }
@@ -1078,10 +1078,10 @@ static void handleReturnTypestateAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
   if (AL.isArgIdent(0)) {
     IdentifierLoc *IL = AL.getArgAsIdent(0);
-    if (!ReturnTypestateAttr::ConvertStrToConsumedState(IL->Ident->getName(),
-                                                        ReturnState)) {
-      S.Diag(IL->Loc, diag::warn_attribute_type_not_supported) << AL
-                                                               << IL->Ident;
+    if (!ReturnTypestateAttr::ConvertStrToConsumedState(
+            IL->getIdentifierInfo()->getName(), ReturnState)) {
+      S.Diag(IL->getLoc(), diag::warn_attribute_type_not_supported)
+          << AL << IL->getIdentifierInfo();
       return;
     }
   } else {
@@ -1125,10 +1125,10 @@ static void handleSetTypestateAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   SetTypestateAttr::ConsumedState NewState;
   if (AL.isArgIdent(0)) {
     IdentifierLoc *Ident = AL.getArgAsIdent(0);
-    StringRef Param = Ident->Ident->getName();
+    StringRef Param = Ident->getIdentifierInfo()->getName();
     if (!SetTypestateAttr::ConvertStrToConsumedState(Param, NewState)) {
-      S.Diag(Ident->Loc, diag::warn_attribute_type_not_supported) << AL
-                                                                  << Param;
+      S.Diag(Ident->getLoc(), diag::warn_attribute_type_not_supported)
+          << AL << Param;
       return;
     }
   } else {
@@ -1147,10 +1147,10 @@ static void handleTestTypestateAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   TestTypestateAttr::ConsumedState TestState;
   if (AL.isArgIdent(0)) {
     IdentifierLoc *Ident = AL.getArgAsIdent(0);
-    StringRef Param = Ident->Ident->getName();
+    StringRef Param = Ident->getIdentifierInfo()->getName();
     if (!TestTypestateAttr::ConvertStrToConsumedState(Param, TestState)) {
-      S.Diag(Ident->Loc, diag::warn_attribute_type_not_supported) << AL
-                                                                  << Param;
+      S.Diag(Ident->getLoc(), diag::warn_attribute_type_not_supported)
+          << AL << Param;
       return;
     }
   } else {
@@ -1288,7 +1288,10 @@ static void handleNonNullAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   for (unsigned I = 0; I < AL.getNumArgs(); ++I) {
     Expr *Ex = AL.getArgAsExpr(I);
     ParamIdx Idx;
-    if (!S.checkFunctionOrMethodParameterIndex(D, AL, I + 1, Ex, Idx))
+    if (!S.checkFunctionOrMethodParameterIndex(
+            D, AL, I + 1, Ex, Idx,
+            /*CanIndexImplicitThis=*/false,
+            /*CanIndexVariadicArguments=*/true))
       return;
 
     // Is the function argument a pointer type?
@@ -1508,7 +1511,7 @@ static void handleOwnershipAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     return;
   }
 
-  IdentifierInfo *Module = AL.getArgAsIdent(0)->Ident;
+  IdentifierInfo *Module = AL.getArgAsIdent(0)->getIdentifierInfo();
 
   StringRef ModuleName = Module->getName();
   if (normalizeName(ModuleName)) {
@@ -1875,10 +1878,10 @@ static void handleCPUSpecificAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     }
 
     IdentifierLoc *CPUArg = AL.getArgAsIdent(ArgNo);
-    StringRef CPUName = CPUArg->Ident->getName().trim();
+    StringRef CPUName = CPUArg->getIdentifierInfo()->getName().trim();
 
     if (!S.Context.getTargetInfo().validateCPUSpecificCPUDispatch(CPUName)) {
-      S.Diag(CPUArg->Loc, diag::err_invalid_cpu_specific_dispatch_value)
+      S.Diag(CPUArg->getLoc(), diag::err_invalid_cpu_specific_dispatch_value)
           << CPUName << (AL.getKind() == ParsedAttr::AT_CPUDispatch);
       return;
     }
@@ -1891,7 +1894,7 @@ static void handleCPUSpecificAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
       S.Diag(AL.getLoc(), diag::warn_multiversion_duplicate_entries);
       return;
     }
-    CPUs.push_back(CPUArg->Ident);
+    CPUs.push_back(CPUArg->getIdentifierInfo());
   }
 
   FD->setIsMultiVersion(true);
@@ -2370,10 +2373,11 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     return;
   IdentifierLoc *Platform = AL.getArgAsIdent(0);
 
-  IdentifierInfo *II = Platform->Ident;
-  if (AvailabilityAttr::getPrettyPlatformName(II->getName()).empty())
-    S.Diag(Platform->Loc, diag::warn_availability_unknown_platform)
-      << Platform->Ident;
+  IdentifierInfo *II = Platform->getIdentifierInfo();
+  StringRef PrettyName = AvailabilityAttr::getPrettyPlatformName(II->getName());
+  if (PrettyName.empty())
+    S.Diag(Platform->getLoc(), diag::warn_availability_unknown_platform)
+        << Platform->getIdentifierInfo();
 
   auto *ND = dyn_cast<NamedDecl>(D);
   if (!ND) // We warned about this already, so just return.
@@ -2382,6 +2386,32 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   AvailabilityChange Introduced = AL.getAvailabilityIntroduced();
   AvailabilityChange Deprecated = AL.getAvailabilityDeprecated();
   AvailabilityChange Obsoleted = AL.getAvailabilityObsoleted();
+
+  const llvm::Triple::OSType PlatformOS = AvailabilityAttr::getOSType(
+      AvailabilityAttr::canonicalizePlatformName(II->getName()));
+
+  auto reportAndUpdateIfInvalidOS = [&](auto &InputVersion) -> void {
+    const bool IsInValidRange =
+        llvm::Triple::isValidVersionForOS(PlatformOS, InputVersion);
+    // Canonicalize availability versions.
+    auto CanonicalVersion = llvm::Triple::getCanonicalVersionForOS(
+        PlatformOS, InputVersion, IsInValidRange);
+    if (!IsInValidRange) {
+      S.Diag(Platform->getLoc(), diag::warn_availability_invalid_os_version)
+          << InputVersion.getAsString() << PrettyName;
+      S.Diag(Platform->getLoc(),
+             diag::note_availability_invalid_os_version_adjusted)
+          << CanonicalVersion.getAsString();
+    }
+    InputVersion = CanonicalVersion;
+  };
+
+  if (PlatformOS != llvm::Triple::OSType::UnknownOS) {
+    reportAndUpdateIfInvalidOS(Introduced.Version);
+    reportAndUpdateIfInvalidOS(Deprecated.Version);
+    reportAndUpdateIfInvalidOS(Obsoleted.Version);
+  }
+
   bool IsUnavailable = AL.getUnavailableLoc().isValid();
   bool IsStrict = AL.getStrictLoc().isValid();
   StringRef Str;
@@ -2422,14 +2452,16 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   IdentifierInfo *IIEnvironment = nullptr;
   if (EnvironmentLoc) {
     if (S.getLangOpts().HLSL) {
-      IIEnvironment = EnvironmentLoc->Ident;
+      IIEnvironment = EnvironmentLoc->getIdentifierInfo();
       if (AvailabilityAttr::getEnvironmentType(
-              EnvironmentLoc->Ident->getName()) ==
+              EnvironmentLoc->getIdentifierInfo()->getName()) ==
           llvm::Triple::EnvironmentType::UnknownEnvironment)
-        S.Diag(EnvironmentLoc->Loc, diag::warn_availability_unknown_environment)
-            << EnvironmentLoc->Ident;
+        S.Diag(EnvironmentLoc->getLoc(),
+               diag::warn_availability_unknown_environment)
+            << EnvironmentLoc->getIdentifierInfo();
     } else {
-      S.Diag(EnvironmentLoc->Loc, diag::err_availability_unexpected_parameter)
+      S.Diag(EnvironmentLoc->getLoc(),
+             diag::err_availability_unexpected_parameter)
           << "environment" << /* C/C++ */ 1;
     }
   }
@@ -2471,7 +2503,11 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
         }
 
         auto Major = Version.getMajor();
-        auto NewMajor = Major >= 9 ? Major - 7 : 0;
+        auto NewMajor = Major;
+        if (Major < 9)
+          NewMajor = 0;
+        else if (Major < 12)
+          NewMajor = Major - 7;
         if (NewMajor >= 2) {
           if (Version.getMinor()) {
             if (Version.getSubminor())
@@ -3649,7 +3685,7 @@ static void handleEnumExtensibilityAttr(Sema &S, Decl *D,
   }
 
   EnumExtensibilityAttr::Kind ExtensibilityKind;
-  IdentifierInfo *II = AL.getArgAsIdent(0)->Ident;
+  IdentifierInfo *II = AL.getArgAsIdent(0)->getIdentifierInfo();
   if (!EnumExtensibilityAttr::ConvertStrToKind(II->getName(),
                                                ExtensibilityKind)) {
     S.Diag(AL.getLoc(), diag::warn_attribute_type_not_supported) << AL << II;
@@ -3872,7 +3908,7 @@ static bool handleFormatAttrCommon(Sema &S, Decl *D, const ParsedAttr &AL,
   bool HasImplicitThisParam = isInstanceMethod(D);
   Info->NumArgs = getFunctionOrMethodNumParams(D) + HasImplicitThisParam;
 
-  Info->Identifier = AL.getArgAsIdent(0)->Ident;
+  Info->Identifier = AL.getArgAsIdent(0)->getIdentifierInfo();
   StringRef Format = Info->Identifier->getName();
 
   if (normalizeName(Format)) {
@@ -4034,14 +4070,14 @@ static void handleCallbackAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
     if (AL.isArgIdent(I)) {
       IdentifierLoc *IdLoc = AL.getArgAsIdent(I);
-      auto It = NameIdxMapping.find(IdLoc->Ident->getName());
+      auto It = NameIdxMapping.find(IdLoc->getIdentifierInfo()->getName());
       if (It == UnknownName) {
         S.Diag(AL.getLoc(), diag::err_callback_attribute_argument_unknown)
-            << IdLoc->Ident << IdLoc->Loc;
+            << IdLoc->getIdentifierInfo() << IdLoc->getLoc();
         return;
       }
 
-      SR = SourceRange(IdLoc->Loc);
+      SR = SourceRange(IdLoc->getLoc());
       ArgIdx = It->second;
     } else if (AL.isArgExpr(I)) {
       Expr *IdxExpr = AL.getArgAsExpr(I);
@@ -4159,13 +4195,14 @@ LifetimeCaptureByAttr *Sema::ParseLifetimeCaptureByAttr(const ParsedAttr &AL,
     }
     assert(AL.isArgIdent(I));
     IdentifierLoc *IdLoc = AL.getArgAsIdent(I);
-    if (IdLoc->Ident->getName() == ParamName) {
-      Diag(IdLoc->Loc, diag::err_capture_by_references_itself) << IdLoc->Loc;
+    if (IdLoc->getIdentifierInfo()->getName() == ParamName) {
+      Diag(IdLoc->getLoc(), diag::err_capture_by_references_itself)
+          << IdLoc->getLoc();
       IsValid = false;
       continue;
     }
-    ParamIdents[I] = IdLoc->Ident;
-    ParamLocs[I] = IdLoc->Loc;
+    ParamIdents[I] = IdLoc->getIdentifierInfo();
+    ParamLocs[I] = IdLoc->getLoc();
   }
   if (!IsValid)
     return nullptr;
@@ -4771,7 +4808,7 @@ static void handleModeAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     return;
   }
 
-  IdentifierInfo *Name = AL.getArgAsIdent(0)->Ident;
+  IdentifierInfo *Name = AL.getArgAsIdent(0)->getIdentifierInfo();
 
   S.AddModeAttr(D, AL, Name);
 }
@@ -5776,13 +5813,17 @@ static void handleArgumentWithTypeTagAttr(Sema &S, Decl *D,
   }
 
   ParamIdx ArgumentIdx;
-  if (!S.checkFunctionOrMethodParameterIndex(D, AL, 2, AL.getArgAsExpr(1),
-                                             ArgumentIdx))
+  if (!S.checkFunctionOrMethodParameterIndex(
+          D, AL, 2, AL.getArgAsExpr(1), ArgumentIdx,
+          /*CanIndexImplicitThis=*/false,
+          /*CanIndexVariadicArguments=*/true))
     return;
 
   ParamIdx TypeTagIdx;
-  if (!S.checkFunctionOrMethodParameterIndex(D, AL, 3, AL.getArgAsExpr(2),
-                                             TypeTagIdx))
+  if (!S.checkFunctionOrMethodParameterIndex(
+          D, AL, 3, AL.getArgAsExpr(2), TypeTagIdx,
+          /*CanIndexImplicitThis=*/false,
+          /*CanIndexVariadicArguments=*/true))
     return;
 
   bool IsPointer = AL.getAttrName()->getName() == "pointer_with_type_tag";
@@ -5795,8 +5836,8 @@ static void handleArgumentWithTypeTagAttr(Sema &S, Decl *D,
   }
 
   D->addAttr(::new (S.Context) ArgumentWithTypeTagAttr(
-      S.Context, AL, AL.getArgAsIdent(0)->Ident, ArgumentIdx, TypeTagIdx,
-      IsPointer));
+      S.Context, AL, AL.getArgAsIdent(0)->getIdentifierInfo(), ArgumentIdx,
+      TypeTagIdx, IsPointer));
 }
 
 static void handleTypeTagForDatatypeAttr(Sema &S, Decl *D,
@@ -5816,7 +5857,7 @@ static void handleTypeTagForDatatypeAttr(Sema &S, Decl *D,
     return;
   }
 
-  IdentifierInfo *PointerKind = AL.getArgAsIdent(0)->Ident;
+  IdentifierInfo *PointerKind = AL.getArgAsIdent(0)->getIdentifierInfo();
   TypeSourceInfo *MatchingCTypeLoc = nullptr;
   S.GetTypeFromParser(AL.getMatchingCType(), &MatchingCTypeLoc);
   assert(MatchingCTypeLoc && "no type source info for attribute argument");
@@ -5887,7 +5928,7 @@ static void handleBuiltinAliasAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     return;
   }
 
-  IdentifierInfo *Ident = AL.getArgAsIdent(0)->Ident;
+  IdentifierInfo *Ident = AL.getArgAsIdent(0)->getIdentifierInfo();
   unsigned BuiltinID = Ident->getBuiltinID();
   StringRef AliasName = cast<FunctionDecl>(D)->getIdentifier()->getName();
 
@@ -6669,7 +6710,7 @@ static void handleCFGuardAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   }
 
   CFGuardAttr::GuardArg Arg;
-  IdentifierInfo *II = AL.getArgAsIdent(0)->Ident;
+  IdentifierInfo *II = AL.getArgAsIdent(0)->getIdentifierInfo();
   if (!CFGuardAttr::ConvertStrToGuardArg(II->getName(), Arg)) {
     S.Diag(AL.getLoc(), diag::warn_attribute_type_not_supported) << AL << II;
     return;
@@ -6771,8 +6812,9 @@ static void handleVTablePointerAuthentication(Sema &S, Decl *D,
   if (AL.isArgIdent(0)) {
     IdentifierLoc *IL = AL.getArgAsIdent(0);
     if (!VTablePointerAuthenticationAttr::ConvertStrToVPtrAuthKeyType(
-            IL->Ident->getName(), KeyType)) {
-      S.Diag(IL->Loc, diag::err_invalid_authentication_key) << IL->Ident;
+            IL->getIdentifierInfo()->getName(), KeyType)) {
+      S.Diag(IL->getLoc(), diag::err_invalid_authentication_key)
+          << IL->getIdentifierInfo();
       AL.setInvalid();
     }
     if (KeyType == VTablePointerAuthenticationAttr::DefaultKey &&
@@ -6792,15 +6834,16 @@ static void handleVTablePointerAuthentication(Sema &S, Decl *D,
     if (AL.isArgIdent(1)) {
       IdentifierLoc *IL = AL.getArgAsIdent(1);
       if (!VTablePointerAuthenticationAttr::
-              ConvertStrToAddressDiscriminationMode(IL->Ident->getName(),
-                                                    AddressDiversityMode)) {
-        S.Diag(IL->Loc, diag::err_invalid_address_discrimination) << IL->Ident;
+              ConvertStrToAddressDiscriminationMode(
+                  IL->getIdentifierInfo()->getName(), AddressDiversityMode)) {
+        S.Diag(IL->getLoc(), diag::err_invalid_address_discrimination)
+            << IL->getIdentifierInfo();
         AL.setInvalid();
       }
       if (AddressDiversityMode ==
               VTablePointerAuthenticationAttr::DefaultAddressDiscrimination &&
           !S.getLangOpts().PointerAuthCalls) {
-        S.Diag(IL->Loc, diag::err_no_default_vtable_pointer_auth) << 1;
+        S.Diag(IL->getLoc(), diag::err_no_default_vtable_pointer_auth) << 1;
         AL.setInvalid();
       }
     } else {
@@ -6815,8 +6858,9 @@ static void handleVTablePointerAuthentication(Sema &S, Decl *D,
     if (AL.isArgIdent(2)) {
       IdentifierLoc *IL = AL.getArgAsIdent(2);
       if (!VTablePointerAuthenticationAttr::ConvertStrToExtraDiscrimination(
-              IL->Ident->getName(), ED)) {
-        S.Diag(IL->Loc, diag::err_invalid_extra_discrimination) << IL->Ident;
+              IL->getIdentifierInfo()->getName(), ED)) {
+        S.Diag(IL->getLoc(), diag::err_invalid_extra_discrimination)
+            << IL->getIdentifierInfo();
         AL.setInvalid();
       }
       if (ED == VTablePointerAuthenticationAttr::DefaultExtraDiscrimination &&
