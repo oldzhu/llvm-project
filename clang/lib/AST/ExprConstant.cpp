@@ -17330,7 +17330,6 @@ static ICEDiag CheckICE(const Expr* E, const ASTContext &Ctx) {
   case Expr::CXXDeleteExprClass:
   case Expr::CXXPseudoDestructorExprClass:
   case Expr::UnresolvedLookupExprClass:
-  case Expr::TypoExprClass:
   case Expr::RecoveryExprClass:
   case Expr::DependentScopeDeclRefExprClass:
   case Expr::CXXConstructExprClass:

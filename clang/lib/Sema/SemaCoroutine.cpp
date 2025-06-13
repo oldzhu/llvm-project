@@ -310,15 +310,6 @@ static ExprResult buildMemberCall(Sema &S, Expr *Base, SourceLocation Loc,
   if (Result.isInvalid())
     return ExprError();
 
-  // We meant exactly what we asked for. No need for typo correction.
-  if (auto *TE = dyn_cast<TypoExpr>(Result.get())) {
-    S.clearDelayedTypo(TE);
-    S.Diag(Loc, diag::err_no_member)
-        << NameInfo.getName() << Base->getType()->getAsCXXRecordDecl()
-        << Base->getSourceRange();
-    return ExprError();
-  }
-
   auto EndLoc = Args.empty() ? Loc : Args.back()->getEndLoc();
   return S.BuildCallExpr(nullptr, Result.get(), Loc, Args, EndLoc, nullptr);
 }
@@ -812,7 +803,6 @@ ExprResult Sema::ActOnCoawaitExpr(Scope *S, SourceLocation Loc, Expr *E) {
     return ExprError();
 
   if (!ActOnCoroutineBodyStart(S, Loc, "co_await")) {
-    CorrectDelayedTyposInExpr(E);
     return ExprError();
   }
 
@@ -971,7 +961,6 @@ ExprResult Sema::ActOnCoyieldExpr(Scope *S, SourceLocation Loc, Expr *E) {
     return ExprError();
 
   if (!ActOnCoroutineBodyStart(S, Loc, "co_yield")) {
-    CorrectDelayedTyposInExpr(E);
     return ExprError();
   }
 
@@ -1026,7 +1015,6 @@ ExprResult Sema::BuildCoyieldExpr(SourceLocation Loc, Expr *E) {
 
 StmtResult Sema::ActOnCoreturnStmt(Scope *S, SourceLocation Loc, Expr *E) {
   if (!ActOnCoroutineBodyStart(S, Loc, "co_return")) {
-    CorrectDelayedTyposInExpr(E);
     return StmtError();
   }
   return BuildCoreturnStmt(Loc, E);
