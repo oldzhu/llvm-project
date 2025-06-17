@@ -482,15 +482,6 @@ llvm::json::Object CreateEventObject(const llvm::StringRef event_name) {
   return event;
 }
 
-protocol::ExceptionBreakpointsFilter
-CreateExceptionBreakpointFilter(const ExceptionBreakpoint &bp) {
-  protocol::ExceptionBreakpointsFilter filter;
-  filter.filter = bp.filter;
-  filter.label = bp.label;
-  filter.defaultState = bp.default_value;
-  return filter;
-}
-
 // "StackFrame": {
 //   "type": "object",
 //   "description": "A Stackframe contains the source location.",
@@ -713,7 +704,7 @@ llvm::json::Value CreateThreadStopped(DAP &dap, lldb::SBThread &thread,
     ExceptionBreakpoint *exc_bp = dap.GetExceptionBPFromStopReason(thread);
     if (exc_bp) {
       body.try_emplace("reason", "exception");
-      EmplaceSafeString(body, "description", exc_bp->label);
+      EmplaceSafeString(body, "description", exc_bp->GetLabel());
     } else {
       InstructionBreakpoint *inst_bp =
           dap.GetInstructionBPFromStopReason(thread);
