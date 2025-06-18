@@ -3511,6 +3511,7 @@ cc_library(
     deps = [
         ":AffineUtils",
         ":Analysis",
+        ":ArithDialect",
         ":ArithUtils",
         ":DialectUtils",
         ":FunctionInterfaces",
@@ -3520,6 +3521,7 @@ cc_library(
         ":IndexDialect",
         ":InliningUtils",
         ":LoopLikeInterface",
+        ":MathDialect",
         ":MemRefDialect",
         ":Pass",
         ":SCFTransforms",
