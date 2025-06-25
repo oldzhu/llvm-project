@@ -208,7 +208,6 @@ public:
     if (auto Err = MR->notifyResolved(InternedResult))
       return Err;
 
-    notifyLoaded();
     return Error::success();
   }
 
@@ -243,11 +242,6 @@ public:
         [this](LinkGraph &G) { return registerDependencies(G); });
 
     return Error::success();
-  }
-
-  void notifyLoaded() {
-    for (auto &P : Plugins)
-      P->notifyLoaded(*MR);
   }
 
   Error notifyEmitted(jitlink::JITLinkMemoryManager::FinalizedAlloc FA) {
