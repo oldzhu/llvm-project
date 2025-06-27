@@ -399,9 +399,9 @@ void CIRGenModule::emitGlobalFunctionDefinition(clang::GlobalDecl gd,
   setNonAliasAttributes(gd, funcOp);
   assert(!cir::MissingFeatures::opFuncAttributesForDefinition());
 
-  if (const ConstructorAttr *ca = funcDecl->getAttr<ConstructorAttr>())
+  if (funcDecl->getAttr<ConstructorAttr>())
     errorNYI(funcDecl->getSourceRange(), "constructor attribute");
-  if (const DestructorAttr *da = funcDecl->getAttr<DestructorAttr>())
+  if (funcDecl->getAttr<DestructorAttr>())
     errorNYI(funcDecl->getSourceRange(), "destructor attribute");
 
   if (funcDecl->getAttr<AnnotateAttr>())
@@ -1027,7 +1027,7 @@ cir::GlobalLinkageKind CIRGenModule::getFunctionLinkage(GlobalDecl gd) {
 
   GVALinkage linkage = astContext.GetGVALinkageForFunction(fd);
 
-  if (const auto *dtor = dyn_cast<CXXDestructorDecl>(fd))
+  if (isa<CXXDestructorDecl>(fd))
     errorNYI(fd->getSourceRange(), "getFunctionLinkage: CXXDestructorDecl");
 
   return getCIRLinkageForDeclarator(fd, linkage, /*IsConstantVariable=*/false);

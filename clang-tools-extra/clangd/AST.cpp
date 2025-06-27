@@ -441,7 +441,7 @@ QualType declaredType(const TypeDecl *D) {
     if (const auto *Args = CTSD->getTemplateArgsAsWritten())
       return Context.getTemplateSpecializationType(
           TemplateName(CTSD->getSpecializedTemplate()), Args->arguments(),
-          /*CanonicalArgs=*/std::nullopt);
+          /*CanonicalArgs=*/{});
   return Context.getTypeDeclType(D);
 }
 
