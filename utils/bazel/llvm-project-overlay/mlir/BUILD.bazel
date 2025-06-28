@@ -3682,6 +3682,7 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":ArithDialect",
         ":DialectUtilsIncGen",
         ":IR",
         ":Support",

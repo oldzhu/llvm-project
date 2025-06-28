@@ -17,7 +17,7 @@
 
 using namespace llvm;
 
-const MCAsmInfo::VariantKindDesc variantKindDescs[] = {
+const MCAsmInfo::AtSpecifier atSpecifiers[] = {
     {ARM::S_GOT_PREL, "GOT_PREL"},
     {ARM::S_ARM_NONE, "none"},
     {ARM::S_PREL31, "prel31"},
@@ -65,7 +65,7 @@ ARMMCAsmInfoDarwin::ARMMCAsmInfoDarwin(const Triple &TheTriple) {
                        ? ExceptionHandling::SjLj
                        : ExceptionHandling::DwarfCFI;
 
-  initializeVariantKinds(variantKindDescs);
+  initializeAtSpecifiers(atSpecifiers);
 }
 
 void ARMELFMCAsmInfo::anchor() { }
@@ -99,7 +99,7 @@ ARMELFMCAsmInfo::ARMELFMCAsmInfo(const Triple &TheTriple) {
   // foo(plt) instead of foo@plt
   UseParensForSymbolVariant = true;
 
-  initializeVariantKinds(variantKindDescs);
+  initializeAtSpecifiers(atSpecifiers);
 }
 
 void ARMELFMCAsmInfo::setUseIntegratedAssembler(bool Value) {
@@ -126,7 +126,7 @@ ARMCOFFMCAsmInfoMicrosoft::ARMCOFFMCAsmInfoMicrosoft() {
   // Conditional Thumb 4-byte instructions can have an implicit IT.
   MaxInstLength = 6;
 
-  initializeVariantKinds(variantKindDescs);
+  initializeAtSpecifiers(atSpecifiers);
 }
 
 void ARMCOFFMCAsmInfoGNU::anchor() { }
@@ -149,7 +149,7 @@ ARMCOFFMCAsmInfoGNU::ARMCOFFMCAsmInfoGNU() {
   // Conditional Thumb 4-byte instructions can have an implicit IT.
   MaxInstLength = 6;
 
-  initializeVariantKinds(variantKindDescs);
+  initializeAtSpecifiers(atSpecifiers);
 }
 
 void ARM::printSpecifierExpr(const MCAsmInfo &MAI, raw_ostream &OS,
