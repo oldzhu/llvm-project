@@ -1389,7 +1389,11 @@ public:
 
   /// Return MCSymbol extracted from the expression.
   virtual const MCSymbol *getTargetSymbol(const MCExpr *Expr) const {
-    if (auto *SymbolRefExpr = dyn_cast<const MCSymbolRefExpr>(Expr))
+    if (auto *BinaryExpr = dyn_cast<const MCBinaryExpr>(Expr))
+      return getTargetSymbol(BinaryExpr->getLHS());
+
+    auto *SymbolRefExpr = dyn_cast<const MCSymbolRefExpr>(Expr);
+    if (SymbolRefExpr && SymbolRefExpr->getSpecifier() == 0)
       return &SymbolRefExpr->getSymbol();
 
     return nullptr;

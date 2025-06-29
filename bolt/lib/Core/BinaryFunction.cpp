@@ -3323,10 +3323,7 @@ void BinaryFunction::duplicateConstantIslands() {
 
         // Update instruction reference
         Operand = MCOperand::createExpr(BC.MIB->getTargetExprFor(
-            Inst,
-            MCSymbolRefExpr::create(ColdSymbol, MCSymbolRefExpr::VK_None,
-                                    *BC.Ctx),
-            *BC.Ctx, 0));
+            Inst, MCSymbolRefExpr::create(ColdSymbol, *BC.Ctx), *BC.Ctx, 0));
         ++OpNum;
       }
     }
