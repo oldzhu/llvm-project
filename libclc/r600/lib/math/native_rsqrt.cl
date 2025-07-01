@@ -6,12 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <clc/clc.h>
 #include <clc/clcmacro.h>
+#include <clc/internal/clc.h>
 
-_CLC_OVERLOAD _CLC_DEF float native_rsqrt(float x)
-{
-    return __builtin_r600_recipsqrt_ieeef(x);
-}
-
-_CLC_UNARY_VECTORIZE(_CLC_OVERLOAD _CLC_DEF, float, native_rsqrt, float);
+#define __FLOAT_ONLY
+#define __CLC_MIN_VECSIZE 1
+#define FUNCTION __clc_native_exp2
+#define __IMPL_FUNCTION __builtin_amdgcn_exp2f
+#define __CLC_BODY <clc/shared/unary_def_scalarize.inc>
+#include <clc/math/gentype.inc>
