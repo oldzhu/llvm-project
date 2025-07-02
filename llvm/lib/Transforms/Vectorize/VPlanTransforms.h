@@ -244,7 +244,9 @@ struct VPlanTransforms {
 
   /// Add branch weight metadata, if the \p Plan's middle block is terminated by
   /// a BranchOnCond recipe.
-  static void addBranchWeightToMiddleTerminator(VPlan &Plan, ElementCount VF);
+  static void
+  addBranchWeightToMiddleTerminator(VPlan &Plan, ElementCount VF,
+                                    std::optional<unsigned> VScaleForTuning);
 };
 
 } // namespace llvm
