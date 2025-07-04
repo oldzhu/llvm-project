@@ -600,4 +600,16 @@ namespace MoveOrAssignOp {
   }
   static_assert(foo());
 }
+
+namespace CopyEmptyUnion {
+  struct A {
+    union {}; // both-warning {{declaration does not declare anything}}
+  };
+  constexpr int foo() {
+     A a;
+     A a2 = a;
+     return 1;
+  }
+  static_assert(foo() == 1);
+}
 #endif
