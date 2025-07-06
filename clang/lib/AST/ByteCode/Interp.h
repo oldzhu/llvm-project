@@ -1139,21 +1139,12 @@ inline bool CmpHelperEQ<Pointer>(InterpState &S, CodePtr OpPC, CompareFn Fn) {
   }
 
   if (Pointer::hasSameBase(LHS, RHS)) {
-    unsigned VL = LHS.getByteOffset();
-    unsigned VR = RHS.getByteOffset();
-
-    // In our Pointer class, a pointer to an array and a pointer to the first
-    // element in the same array are NOT equal. They have the same Base value,
-    // but a different Offset. This is a pretty rare case, so we fix this here
-    // by comparing pointers to the first elements.
-    if (!LHS.isZero() && LHS.isArrayRoot())
-      VL = LHS.atIndex(0).getByteOffset();
-    if (!RHS.isZero() && RHS.isArrayRoot())
-      VR = RHS.atIndex(0).getByteOffset();
-
-    S.Stk.push<BoolT>(BoolT::from(Fn(Compare(VL, VR))));
+    size_t A = LHS.computeOffsetForComparison();
+    size_t B = RHS.computeOffsetForComparison();
+    S.Stk.push<BoolT>(BoolT::from(Fn(Compare(A, B))));
     return true;
   }
+
   // Otherwise we need to do a bunch of extra checks before returning Unordered.
   if (LHS.isOnePastEnd() && !RHS.isOnePastEnd() && !RHS.isZero() &&
       RHS.getOffset() == 0) {
@@ -3106,6 +3097,15 @@ inline bool EndSpeculation(InterpState &S, CodePtr OpPC) {
     S.getEvalStatus().Diag = S.PrevDiags;
     S.PrevDiags = nullptr;
   }
+  return true;
+}
+
+inline bool PushCC(InterpState &S, CodePtr OpPC, bool Value) {
+  S.ConstantContextOverride = Value;
+  return true;
+}
+inline bool PopCC(InterpState &S, CodePtr OpPC) {
+  S.ConstantContextOverride = std::nullopt;
   return true;
 }
 

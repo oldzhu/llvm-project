@@ -338,6 +338,63 @@ void Pointer::print(llvm::raw_ostream &OS) const {
   }
 }
 
+size_t Pointer::computeOffsetForComparison() const {
+  if (isIntegralPointer())
+    return asIntPointer().Value + Offset;
+  if (isTypeidPointer())
+    return reinterpret_cast<uintptr_t>(asTypeidPointer().TypePtr) + Offset;
+
+  if (!isBlockPointer())
+    return Offset;
+
+  size_t Result = 0;
+  Pointer P = *this;
+  while (true) {
+
+    if (P.isVirtualBaseClass()) {
+      Result += getInlineDesc()->Offset;
+      P = P.getBase();
+      continue;
+    }
+
+    if (P.isBaseClass()) {
+      if (P.getRecord()->getNumVirtualBases() > 0)
+        Result += P.getInlineDesc()->Offset;
+      P = P.getBase();
+      continue;
+    }
+    if (P.isArrayElement()) {
+      P = P.expand();
+      Result += (P.getIndex() * P.elemSize());
+      P = P.getArray();
+      continue;
+    }
+
+    if (P.isRoot()) {
+      if (P.isOnePastEnd())
+        ++Result;
+      break;
+    }
+
+    if (const Record *R = P.getBase().getRecord(); R && R->isUnion()) {
+      // Direct child of a union - all have offset 0.
+      P = P.getBase();
+      continue;
+    }
+
+    // Fields, etc.
+    Result += P.getInlineDesc()->Offset;
+    if (P.isOnePastEnd())
+      ++Result;
+
+    P = P.getBase();
+    if (P.isRoot())
+      break;
+  }
+
+  return Result;
+}
+
 std::string Pointer::toDiagnosticString(const ASTContext &Ctx) const {
   if (isZero())
     return "nullptr";

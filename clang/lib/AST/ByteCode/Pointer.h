@@ -413,7 +413,7 @@ public:
     return false;
   }
   bool inUnion() const {
-    if (isBlockPointer())
+    if (isBlockPointer() && asBlockPointer().Base >= sizeof(InlineDescriptor))
       return getInlineDesc()->InUnion;
     return false;
   };
@@ -760,6 +760,11 @@ public:
 
   /// Prints the pointer.
   void print(llvm::raw_ostream &OS) const;
+
+  /// Compute an integer that can be used to compare this pointer to
+  /// another one. This is usually NOT the same as the pointer offset
+  /// regarding the AST record layout.
+  size_t computeOffsetForComparison() const;
 
 private:
   friend class Block;
