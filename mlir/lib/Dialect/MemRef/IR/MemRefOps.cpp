@@ -87,99 +87,28 @@ SmallVector<OpFoldResult> memref::getMixedSizes(OpBuilder &builder,
 // Utility functions for propagating static information
 //===----------------------------------------------------------------------===//
 
-/// Helper function that infers the constant values from a list of \p values,
-/// a \p memRefTy, and another helper function \p getAttributes.
-/// The inferred constant values replace the related `OpFoldResult` in
-/// \p values.
+/// Helper function that sets values[i] to constValues[i] if the latter is a
+/// static value, as indicated by ShapedType::kDynamic.
 ///
-/// \note This function shouldn't be used directly, instead, use the
-/// `getConstifiedMixedXXX` methods from the related operations.
-///
-/// \p getAttributes retuns a list of potentially constant values, as determined
-/// by \p isDynamic, from the given \p memRefTy. The returned list must have as
-/// many elements as \p values or be empty.
-///
-/// E.g., consider the following example:
-/// ```
-/// memref.reinterpret_cast %base to <...> strides: [2, %dyn_stride] :
-///     memref<f32> to memref<?x?xf32, strided<[?, 1], offset: ?>>
-/// ```
-/// `ReinterpretCastOp::getMixedStrides()` will return `[2, %dyn_stride]`.
-/// Now using this helper function with:
-/// - `values == [2, %dyn_stride]`,
-/// - `memRefTy == memref<?x?xf32, strided<[?, 1], offset: ?>>`
-/// - `getAttributes == getConstantStrides` (i.e., a wrapper around
-/// `getStridesAndOffset`), and
-/// - `isDynamic == ShapedType::isDynamic`
-/// Will yield: `values == [2, 1]`
-static void constifyIndexValues(
-    SmallVectorImpl<OpFoldResult> &values, MemRefType memRefTy,
-    MLIRContext *ctxt,
-    llvm::function_ref<SmallVector<int64_t>(MemRefType)> getAttributes,
-    llvm::function_ref<bool(int64_t)> isDynamic) {
-  SmallVector<int64_t> constValues = getAttributes(memRefTy);
-  Builder builder(ctxt);
-  for (const auto &it : llvm::enumerate(constValues)) {
-    int64_t constValue = it.value();
-    if (!isDynamic(constValue))
-      values[it.index()] = builder.getIndexAttr(constValue);
-  }
-  for (OpFoldResult &ofr : values) {
-    if (auto attr = dyn_cast<Attribute>(ofr)) {
-      // FIXME: We shouldn't need to do that, but right now, the static indices
-      // are created with the wrong type: `i64` instead of `index`.
-      // As a result, if we were to keep the attribute as is, we may fail to see
-      // that two attributes are equal because one would have the i64 type and
-      // the other the index type.
-      // The alternative would be to create constant indices with getI64Attr in
-      // this and the previous loop, but it doesn't logically make sense (we are
-      // dealing with indices here) and would only strenghten the inconsistency
-      // around how static indices are created (some places use getI64Attr,
-      // others use getIndexAttr).
-      // The workaround here is to stick to the IndexAttr type for all the
-      // values, hence we recreate the attribute even when it is already static
-      // to make sure the type is consistent.
-      ofr = builder.getIndexAttr(llvm::cast<IntegerAttr>(attr).getInt());
+/// If constValues[i] is dynamic, tries to extract a constant value from
+/// value[i] to allow for additional folding opportunities. Also convertes all
+/// existing attributes to index attributes. (They may be i64 attributes.)
+static void constifyIndexValues(SmallVectorImpl<OpFoldResult> &values,
+                                ArrayRef<int64_t> constValues) {
+  assert(constValues.size() == values.size() &&
+         "incorrect number of const values");
+  for (auto [i, cstVal] : llvm::enumerate(constValues)) {
+    Builder builder(values[i].getContext());
+    if (ShapedType::isStatic(cstVal)) {
+      // Constant value is known, use it directly.
+      values[i] = builder.getIndexAttr(cstVal);
       continue;
     }
-    std::optional<int64_t> maybeConstant =
-        getConstantIntValue(cast<Value>(ofr));
-    if (maybeConstant)
-      ofr = builder.getIndexAttr(*maybeConstant);
+    if (std::optional<int64_t> cst = getConstantIntValue(values[i])) {
+      // Try to extract a constant or convert an existing to index.
+      values[i] = builder.getIndexAttr(*cst);
+    }
   }
-}
-
-/// Wrapper around `getShape` that conforms to the function signature
-/// expected for `getAttributes` in `constifyIndexValues`.
-static SmallVector<int64_t> getConstantSizes(MemRefType memRefTy) {
-  ArrayRef<int64_t> sizes = memRefTy.getShape();
-  return SmallVector<int64_t>(sizes);
-}
-
-/// Wrapper around `getStridesAndOffset` that returns only the offset and
-/// conforms to the function signature expected for `getAttributes` in
-/// `constifyIndexValues`.
-static SmallVector<int64_t> getConstantOffset(MemRefType memrefType) {
-  SmallVector<int64_t> strides;
-  int64_t offset;
-  LogicalResult hasStaticInformation =
-      memrefType.getStridesAndOffset(strides, offset);
-  if (failed(hasStaticInformation))
-    return SmallVector<int64_t>();
-  return SmallVector<int64_t>(1, offset);
-}
-
-/// Wrapper around `getStridesAndOffset` that returns only the strides and
-/// conforms to the function signature expected for `getAttributes` in
-/// `constifyIndexValues`.
-static SmallVector<int64_t> getConstantStrides(MemRefType memrefType) {
-  SmallVector<int64_t> strides;
-  int64_t offset;
-  LogicalResult hasStaticInformation =
-      memrefType.getStridesAndOffset(strides, offset);
-  if (failed(hasStaticInformation))
-    return SmallVector<int64_t>();
-  return strides;
 }
 
 //===----------------------------------------------------------------------===//
@@ -260,7 +189,7 @@ struct SimplifyAllocConst : public OpRewritePattern<AllocLikeOp> {
     for (unsigned dim = 0, e = memrefType.getRank(); dim < e; ++dim) {
       int64_t dimSize = memrefType.getDimSize(dim);
       // If this is already static dimension, keep it.
-      if (!ShapedType::isDynamic(dimSize)) {
+      if (ShapedType::isStatic(dimSize)) {
         newShapeConstants.push_back(dimSize);
         continue;
       }
@@ -686,21 +615,21 @@ bool CastOp::canFoldIntoConsumerOp(CastOp castOp) {
   for (auto it : llvm::zip(sourceType.getShape(), resultType.getShape())) {
     auto ss = std::get<0>(it), st = std::get<1>(it);
     if (ss != st)
-      if (ShapedType::isDynamic(ss) && !ShapedType::isDynamic(st))
+      if (ShapedType::isDynamic(ss) && ShapedType::isStatic(st))
         return false;
   }
 
   // If cast is towards more static offset along any dimension, don't fold.
   if (sourceOffset != resultOffset)
     if (ShapedType::isDynamic(sourceOffset) &&
-        !ShapedType::isDynamic(resultOffset))
+        ShapedType::isStatic(resultOffset))
       return false;
 
   // If cast is towards more static strides along any dimension, don't fold.
   for (auto it : llvm::zip(sourceStrides, resultStrides)) {
     auto ss = std::get<0>(it), st = std::get<1>(it);
     if (ss != st)
-      if (ShapedType::isDynamic(ss) && !ShapedType::isDynamic(st))
+      if (ShapedType::isDynamic(ss) && ShapedType::isStatic(st))
         return false;
   }
 
@@ -750,7 +679,7 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
 
     for (unsigned i = 0, e = aT.getRank(); i != e; ++i) {
       int64_t aDim = aT.getDimSize(i), bDim = bT.getDimSize(i);
-      if (!ShapedType::isDynamic(aDim) && !ShapedType::isDynamic(bDim) &&
+      if (ShapedType::isStatic(aDim) && ShapedType::isStatic(bDim) &&
           aDim != bDim)
         return false;
     }
@@ -1459,24 +1388,34 @@ ExtractStridedMetadataOp::fold(FoldAdaptor adaptor,
 
 SmallVector<OpFoldResult> ExtractStridedMetadataOp::getConstifiedMixedSizes() {
   SmallVector<OpFoldResult> values = getAsOpFoldResult(getSizes());
-  constifyIndexValues(values, getSource().getType(), getContext(),
-                      getConstantSizes, ShapedType::isDynamic);
+  constifyIndexValues(values, getSource().getType().getShape());
   return values;
 }
 
 SmallVector<OpFoldResult>
 ExtractStridedMetadataOp::getConstifiedMixedStrides() {
   SmallVector<OpFoldResult> values = getAsOpFoldResult(getStrides());
-  constifyIndexValues(values, getSource().getType(), getContext(),
-                      getConstantStrides, ShapedType::isDynamic);
+  SmallVector<int64_t> staticValues;
+  int64_t unused;
+  LogicalResult status =
+      getSource().getType().getStridesAndOffset(staticValues, unused);
+  (void)status;
+  assert(succeeded(status) && "could not get strides from type");
+  constifyIndexValues(values, staticValues);
   return values;
 }
 
 OpFoldResult ExtractStridedMetadataOp::getConstifiedMixedOffset() {
   OpFoldResult offsetOfr = getAsOpFoldResult(getOffset());
   SmallVector<OpFoldResult> values(1, offsetOfr);
-  constifyIndexValues(values, getSource().getType(), getContext(),
-                      getConstantOffset, ShapedType::isDynamic);
+  SmallVector<int64_t> staticValues, unused;
+  int64_t offset;
+  LogicalResult status =
+      getSource().getType().getStridesAndOffset(unused, offset);
+  (void)status;
+  assert(succeeded(status) && "could not get offset from type");
+  staticValues.push_back(offset);
+  constifyIndexValues(values, staticValues);
   return values[0];
 }
 
@@ -1923,7 +1862,7 @@ LogicalResult ReinterpretCastOp::verify() {
   // Match sizes in result memref type and in static_sizes attribute.
   for (auto [idx, resultSize, expectedSize] :
        llvm::enumerate(resultType.getShape(), getStaticSizes())) {
-    if (!ShapedType::isDynamic(resultSize) && resultSize != expectedSize)
+    if (ShapedType::isStatic(resultSize) && resultSize != expectedSize)
       return emitError("expected result type with size = ")
              << (ShapedType::isDynamic(expectedSize)
                      ? std::string("dynamic")
@@ -1942,7 +1881,7 @@ LogicalResult ReinterpretCastOp::verify() {
 
   // Match offset in result memref type and in static_offsets attribute.
   int64_t expectedOffset = getStaticOffsets().front();
-  if (!ShapedType::isDynamic(resultOffset) && resultOffset != expectedOffset)
+  if (ShapedType::isStatic(resultOffset) && resultOffset != expectedOffset)
     return emitError("expected result type with offset = ")
            << (ShapedType::isDynamic(expectedOffset)
                    ? std::string("dynamic")
@@ -1952,7 +1891,7 @@ LogicalResult ReinterpretCastOp::verify() {
   // Match strides in result memref type and in static_strides attribute.
   for (auto [idx, resultStride, expectedStride] :
        llvm::enumerate(resultStrides, getStaticStrides())) {
-    if (!ShapedType::isDynamic(resultStride) && resultStride != expectedStride)
+    if (ShapedType::isStatic(resultStride) && resultStride != expectedStride)
       return emitError("expected result type with stride = ")
              << (ShapedType::isDynamic(expectedStride)
                      ? std::string("dynamic")
@@ -1989,7 +1928,7 @@ OpFoldResult ReinterpretCastOp::fold(FoldAdaptor /*operands*/) {
   }
 
   // reinterpret_cast(x) w/o offset/shape/stride changes -> x
-  if (!ShapedType::isDynamicShape(getType().getShape()) &&
+  if (ShapedType::isStaticShape(getType().getShape()) &&
       src.getType() == getType() && getStaticOffsets().front() == 0) {
     return src;
   }
@@ -1999,15 +1938,18 @@ OpFoldResult ReinterpretCastOp::fold(FoldAdaptor /*operands*/) {
 
 SmallVector<OpFoldResult> ReinterpretCastOp::getConstifiedMixedSizes() {
   SmallVector<OpFoldResult> values = getMixedSizes();
-  constifyIndexValues(values, getType(), getContext(), getConstantSizes,
-                      ShapedType::isDynamic);
+  constifyIndexValues(values, getType().getShape());
   return values;
 }
 
 SmallVector<OpFoldResult> ReinterpretCastOp::getConstifiedMixedStrides() {
   SmallVector<OpFoldResult> values = getMixedStrides();
-  constifyIndexValues(values, getType(), getContext(), getConstantStrides,
-                      ShapedType::isDynamic);
+  SmallVector<int64_t> staticValues;
+  int64_t unused;
+  LogicalResult status = getType().getStridesAndOffset(staticValues, unused);
+  (void)status;
+  assert(succeeded(status) && "could not get strides from type");
+  constifyIndexValues(values, staticValues);
   return values;
 }
 
@@ -2015,8 +1957,13 @@ OpFoldResult ReinterpretCastOp::getConstifiedMixedOffset() {
   SmallVector<OpFoldResult> values = getMixedOffsets();
   assert(values.size() == 1 &&
          "reinterpret_cast must have one and only one offset");
-  constifyIndexValues(values, getType(), getContext(), getConstantOffset,
-                      ShapedType::isDynamic);
+  SmallVector<int64_t> staticValues, unused;
+  int64_t offset;
+  LogicalResult status = getType().getStridesAndOffset(unused, offset);
+  (void)status;
+  assert(succeeded(status) && "could not get offset from type");
+  staticValues.push_back(offset);
+  constifyIndexValues(values, staticValues);
   return values[0];
 }
 
@@ -2432,7 +2379,7 @@ LogicalResult ExpandShapeOp::verify() {
   DenseI64ArrayAttr staticOutputShapes = getStaticOutputShapeAttr();
   ArrayRef<int64_t> resShape = getResult().getType().getShape();
   for (auto [pos, shape] : llvm::enumerate(resShape)) {
-    if (!ShapedType::isDynamic(shape) && shape != staticOutputShapes[pos]) {
+    if (ShapedType::isStatic(shape) && shape != staticOutputShapes[pos]) {
       return emitOpError("invalid output shape provided at pos ") << pos;
     }
   }
@@ -2475,7 +2422,7 @@ computeCollapsedLayoutMap(MemRefType srcType,
     ArrayRef<int64_t> ref = llvm::ArrayRef(reassoc);
     while (srcShape[ref.back()] == 1 && ref.size() > 1)
       ref = ref.drop_back();
-    if (!ShapedType::isDynamic(srcShape[ref.back()]) || ref.size() == 1) {
+    if (ShapedType::isStatic(srcShape[ref.back()]) || ref.size() == 1) {
       resultStrides.push_back(srcStrides[ref.back()]);
     } else {
       // Dynamically-sized dims may turn out to be dims of size 1 at runtime, so
@@ -3562,7 +3509,7 @@ struct ViewOpShapeFolder : public OpRewritePattern<ViewOp> {
     for (unsigned dim = 0, e = rank; dim < e; ++dim) {
       int64_t dimSize = memrefType.getDimSize(dim);
       // If this is already static dimension, keep it.
-      if (!ShapedType::isDynamic(dimSize)) {
+      if (ShapedType::isStatic(dimSize)) {
         newShapeConstants.push_back(dimSize);
         continue;
       }

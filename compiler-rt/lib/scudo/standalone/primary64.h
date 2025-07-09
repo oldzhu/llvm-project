@@ -14,11 +14,11 @@
 #include "common.h"
 #include "condition_variable.h"
 #include "list.h"
-#include "local_cache.h"
 #include "mem_map.h"
 #include "memtag.h"
 #include "options.h"
 #include "release.h"
+#include "size_class_allocator.h"
 #include "stats.h"
 #include "string_utils.h"
 #include "thread_annotations.h"
@@ -38,7 +38,7 @@ namespace scudo {
 // they belong to. The Blocks created are shuffled to prevent predictable
 // address patterns (the predictability increases with the size of the Blocks).
 //
-// The 1st Region (for size class 0) holds the TransferBatches. This is a
+// The 1st Region (for size class 0) holds the Batches. This is a
 // structure used to transfer arrays of available pointers from the class size
 // freelist to the thread specific freelist, and back.
 //
@@ -57,16 +57,28 @@ public:
                 "Group size shouldn't be greater than the region size");
   static const uptr GroupScale = GroupSizeLog - CompactPtrScale;
   typedef SizeClassAllocator64<Config> ThisT;
-  typedef SizeClassAllocatorLocalCache<ThisT> CacheT;
-  typedef TransferBatch<ThisT> TransferBatchT;
+  typedef Batch<ThisT> BatchT;
   typedef BatchGroup<ThisT> BatchGroupT;
+  using SizeClassAllocatorT =
+      typename Conditional<Config::getEnableBlockCache(),
+                           SizeClassAllocatorLocalCache<ThisT>,
+                           SizeClassAllocatorNoCache<ThisT>>::type;
+  static const u16 MaxNumBlocksInBatch = SizeClassMap::MaxNumCachedHint;
+
+  static constexpr uptr getSizeOfBatchClass() {
+    const uptr HeaderSize = sizeof(BatchT);
+    return roundUp(HeaderSize + sizeof(CompactPtrT) * MaxNumBlocksInBatch,
+                   1 << CompactPtrScale);
+  }
+
+  static_assert(sizeof(BatchGroupT) <= getSizeOfBatchClass(),
+                "BatchGroupT also uses BatchClass");
 
   // BachClass is used to store internal metadata so it needs to be at least as
   // large as the largest data structure.
   static uptr getSizeByClassId(uptr ClassId) {
     return (ClassId == SizeClassMap::BatchClassId)
-               ? roundUp(Max(sizeof(TransferBatchT), sizeof(BatchGroupT)),
-                         1U << CompactPtrScale)
+               ? getSizeOfBatchClass()
                : SizeClassMap::getSizeByClassId(ClassId);
   }
 
@@ -168,7 +180,7 @@ public:
 
   // When all blocks are freed, it has to be the same size as `AllocatedUser`.
   void verifyAllBlocksAreReleasedTestOnly() {
-    // `BatchGroup` and `TransferBatch` also use the blocks from BatchClass.
+    // `BatchGroup` and `Batch` also use the blocks from BatchClass.
     uptr BatchClassUsedInFreeLists = 0;
     for (uptr I = 0; I < NumClasses; I++) {
       // We have to count BatchClassUsedInFreeLists in other regions first.
@@ -180,7 +192,7 @@ public:
       const uptr BlockSize = getSizeByClassId(I);
       uptr TotalBlocks = 0;
       for (BatchGroupT &BG : Region->FreeListInfo.BlockList) {
-        // `BG::Batches` are `TransferBatches`. +1 for `BatchGroup`.
+        // `BG::Batches` are `Batches`. +1 for `BatchGroup`.
         BatchClassUsedInFreeLists += BG.Batches.size() + 1;
         for (const auto &It : BG.Batches)
           TotalBlocks += It.getCount();
@@ -201,7 +213,7 @@ public:
         for (const auto &It : BG.Batches)
           TotalBlocks += It.getCount();
       } else {
-        // `BatchGroup` with empty freelist doesn't have `TransferBatch` record
+        // `BatchGroup` with empty freelist doesn't have `Batch` record
         // itself.
         ++TotalBlocks;
       }
@@ -215,15 +227,16 @@ public:
     DCHECK_EQ(BlocksInUse, BatchClassUsedInFreeLists);
   }
 
-  u16 popBlocks(CacheT *C, uptr ClassId, CompactPtrT *ToArray,
-                const u16 MaxBlockCount) {
+  u16 popBlocks(SizeClassAllocatorT *SizeClassAllocator, uptr ClassId,
+                CompactPtrT *ToArray, const u16 MaxBlockCount) {
     DCHECK_LT(ClassId, NumClasses);
     RegionInfo *Region = getRegionInfo(ClassId);
     u16 PopCount = 0;
 
     {
       ScopedLock L(Region->FLLock);
-      PopCount = popBlocksImpl(C, ClassId, Region, ToArray, MaxBlockCount);
+      PopCount = popBlocksImpl(SizeClassAllocator, ClassId, Region, ToArray,
+                               MaxBlockCount);
       if (PopCount != 0U)
         return PopCount;
     }
@@ -231,8 +244,8 @@ public:
     bool ReportRegionExhausted = false;
 
     if (conditionVariableEnabled()) {
-      PopCount = popBlocksWithCV(C, ClassId, Region, ToArray, MaxBlockCount,
-                                 ReportRegionExhausted);
+      PopCount = popBlocksWithCV(SizeClassAllocator, ClassId, Region, ToArray,
+                                 MaxBlockCount, ReportRegionExhausted);
     } else {
       while (true) {
         // When two threads compete for `Region->MMLock`, we only want one of
@@ -241,15 +254,16 @@ public:
         ScopedLock ML(Region->MMLock);
         {
           ScopedLock FL(Region->FLLock);
-          PopCount = popBlocksImpl(C, ClassId, Region, ToArray, MaxBlockCount);
+          PopCount = popBlocksImpl(SizeClassAllocator, ClassId, Region, ToArray,
+                                   MaxBlockCount);
           if (PopCount != 0U)
             return PopCount;
         }
 
         const bool RegionIsExhausted = Region->Exhausted;
         if (!RegionIsExhausted) {
-          PopCount = populateFreeListAndPopBlocks(C, ClassId, Region, ToArray,
-                                                  MaxBlockCount);
+          PopCount = populateFreeListAndPopBlocks(
+              SizeClassAllocator, ClassId, Region, ToArray, MaxBlockCount);
         }
         ReportRegionExhausted = !RegionIsExhausted && Region->Exhausted;
         break;
@@ -270,7 +284,8 @@ public:
   }
 
   // Push the array of free blocks to the designated batch group.
-  void pushBlocks(CacheT *C, uptr ClassId, CompactPtrT *Array, u32 Size) {
+  void pushBlocks(SizeClassAllocatorT *SizeClassAllocator, uptr ClassId,
+                  CompactPtrT *Array, u32 Size) {
     DCHECK_LT(ClassId, NumClasses);
     DCHECK_GT(Size, 0);
 
@@ -305,7 +320,8 @@ public:
 
     {
       ScopedLock L(Region->FLLock);
-      pushBlocksImpl(C, ClassId, Region, Array, Size, SameGroup);
+      pushBlocksImpl(SizeClassAllocator, ClassId, Region, Array, Size,
+                     SameGroup);
       if (conditionVariableEnabled())
         Region->FLLockCV.notifyAll(Region->FLLock);
     }
@@ -649,13 +665,13 @@ private:
       REQUIRES(Region->FLLock) {
     DCHECK_EQ(Region, getRegionInfo(SizeClassMap::BatchClassId));
 
-    // Free blocks are recorded by TransferBatch in freelist for all
-    // size-classes. In addition, TransferBatch is allocated from BatchClassId.
+    // Free blocks are recorded by Batch in freelist for all
+    // size-classes. In addition, Batch is allocated from BatchClassId.
     // In order not to use additional block to record the free blocks in
-    // BatchClassId, they are self-contained. I.e., A TransferBatch records the
+    // BatchClassId, they are self-contained. I.e., A Batch records the
     // block address of itself. See the figure below:
     //
-    // TransferBatch at 0xABCD
+    // Batch at 0xABCD
     // +----------------------------+
     // | Free blocks' addr          |
     // | +------+------+------+     |
@@ -663,25 +679,25 @@ private:
     // | +------+------+------+     |
     // +----------------------------+
     //
-    // When we allocate all the free blocks in the TransferBatch, the block used
-    // by TransferBatch is also free for use. We don't need to recycle the
-    // TransferBatch. Note that the correctness is maintained by the invariant,
+    // When we allocate all the free blocks in the Batch, the block used
+    // by Batch is also free for use. We don't need to recycle the
+    // Batch. Note that the correctness is maintained by the invariant,
     //
-    //   Each popBlocks() request returns the entire TransferBatch. Returning
-    //   part of the blocks in a TransferBatch is invalid.
+    //   Each popBlocks() request returns the entire Batch. Returning
+    //   part of the blocks in a Batch is invalid.
     //
-    // This ensures that TransferBatch won't leak the address itself while it's
+    // This ensures that Batch won't leak the address itself while it's
     // still holding other valid data.
     //
     // Besides, BatchGroup is also allocated from BatchClassId and has its
-    // address recorded in the TransferBatch too. To maintain the correctness,
+    // address recorded in the Batch too. To maintain the correctness,
     //
-    //   The address of BatchGroup is always recorded in the last TransferBatch
+    //   The address of BatchGroup is always recorded in the last Batch
     //   in the freelist (also imply that the freelist should only be
-    //   updated with push_front). Once the last TransferBatch is popped,
+    //   updated with push_front). Once the last Batch is popped,
     //   the block used by BatchGroup is also free for use.
     //
-    // With this approach, the blocks used by BatchGroup and TransferBatch are
+    // With this approach, the blocks used by BatchGroup and Batch are
     // reusable and don't need additional space for them.
 
     Region->FreeListInfo.PushedBlocks += Size;
@@ -697,8 +713,8 @@ private:
       // memory group here.
       BG->CompactPtrGroupBase = 0;
       BG->BytesInBGAtLastCheckpoint = 0;
-      BG->MaxCachedPerBatch =
-          CacheT::getMaxCached(getSizeByClassId(SizeClassMap::BatchClassId));
+      BG->MaxCachedPerBatch = SizeClassAllocatorT::getMaxCached(
+          getSizeByClassId(SizeClassMap::BatchClassId));
 
       Region->FreeListInfo.BlockList.push_front(BG);
     }
@@ -710,12 +726,12 @@ private:
     //   1. just allocated a new `BatchGroup`.
     //   2. Only 1 block is pushed when the freelist is empty.
     if (BG->Batches.empty()) {
-      // Construct the `TransferBatch` on the last element.
-      TransferBatchT *TB = reinterpret_cast<TransferBatchT *>(
+      // Construct the `Batch` on the last element.
+      BatchT *TB = reinterpret_cast<BatchT *>(
           decompactPtr(SizeClassMap::BatchClassId, Array[Size - 1]));
       TB->clear();
-      // As mentioned above, addresses of `TransferBatch` and `BatchGroup` are
-      // recorded in the TransferBatch.
+      // As mentioned above, addresses of `Batch` and `BatchGroup` are
+      // recorded in the Batch.
       TB->add(Array[Size - 1]);
       TB->add(
           compactPtr(SizeClassMap::BatchClassId, reinterpret_cast<uptr>(BG)));
@@ -723,14 +739,14 @@ private:
       BG->Batches.push_front(TB);
     }
 
-    TransferBatchT *CurBatch = BG->Batches.front();
+    BatchT *CurBatch = BG->Batches.front();
     DCHECK_NE(CurBatch, nullptr);
 
     for (u32 I = 0; I < Size;) {
       u16 UnusedSlots =
           static_cast<u16>(BG->MaxCachedPerBatch - CurBatch->getCount());
       if (UnusedSlots == 0) {
-        CurBatch = reinterpret_cast<TransferBatchT *>(
+        CurBatch = reinterpret_cast<BatchT *>(
             decompactPtr(SizeClassMap::BatchClassId, Array[I]));
         CurBatch->clear();
         // Self-contained
@@ -759,36 +775,36 @@ private:
   //                            TB
   //
   // Each BlockGroup(BG) will associate with unique group id and the free blocks
-  // are managed by a list of TransferBatch(TB). To reduce the time of inserting
+  // are managed by a list of Batch(TB). To reduce the time of inserting
   // blocks, BGs are sorted and the input `Array` are supposed to be sorted so
   // that we can get better performance of maintaining sorted property.
   // Use `SameGroup=true` to indicate that all blocks in the array are from the
   // same group then we will skip checking the group id of each block.
-  void pushBlocksImpl(CacheT *C, uptr ClassId, RegionInfo *Region,
-                      CompactPtrT *Array, u32 Size, bool SameGroup = false)
-      REQUIRES(Region->FLLock) {
+  void pushBlocksImpl(SizeClassAllocatorT *SizeClassAllocator, uptr ClassId,
+                      RegionInfo *Region, CompactPtrT *Array, u32 Size,
+                      bool SameGroup = false) REQUIRES(Region->FLLock) {
     DCHECK_NE(ClassId, SizeClassMap::BatchClassId);
     DCHECK_GT(Size, 0U);
 
     auto CreateGroup = [&](uptr CompactPtrGroupBase) {
-      BatchGroupT *BG =
-          reinterpret_cast<BatchGroupT *>(C->getBatchClassBlock());
+      BatchGroupT *BG = reinterpret_cast<BatchGroupT *>(
+          SizeClassAllocator->getBatchClassBlock());
       BG->Batches.clear();
-      TransferBatchT *TB =
-          reinterpret_cast<TransferBatchT *>(C->getBatchClassBlock());
+      BatchT *TB =
+          reinterpret_cast<BatchT *>(SizeClassAllocator->getBatchClassBlock());
       TB->clear();
 
       BG->CompactPtrGroupBase = CompactPtrGroupBase;
       BG->Batches.push_front(TB);
       BG->BytesInBGAtLastCheckpoint = 0;
-      BG->MaxCachedPerBatch = TransferBatchT::MaxNumCached;
+      BG->MaxCachedPerBatch = MaxNumBlocksInBatch;
 
       return BG;
     };
 
     auto InsertBlocks = [&](BatchGroupT *BG, CompactPtrT *Array, u32 Size) {
-      SinglyLinkedList<TransferBatchT> &Batches = BG->Batches;
-      TransferBatchT *CurBatch = Batches.front();
+      SinglyLinkedList<BatchT> &Batches = BG->Batches;
+      BatchT *CurBatch = Batches.front();
       DCHECK_NE(CurBatch, nullptr);
 
       for (u32 I = 0; I < Size;) {
@@ -796,8 +812,8 @@ private:
         u16 UnusedSlots =
             static_cast<u16>(BG->MaxCachedPerBatch - CurBatch->getCount());
         if (UnusedSlots == 0) {
-          CurBatch =
-              reinterpret_cast<TransferBatchT *>(C->getBatchClassBlock());
+          CurBatch = reinterpret_cast<BatchT *>(
+              SizeClassAllocator->getBatchClassBlock());
           CurBatch->clear();
           Batches.push_front(CurBatch);
           UnusedSlots = BG->MaxCachedPerBatch;
@@ -871,9 +887,9 @@ private:
     InsertBlocks(Cur, Array + Size - Count, Count);
   }
 
-  u16 popBlocksWithCV(CacheT *C, uptr ClassId, RegionInfo *Region,
-                      CompactPtrT *ToArray, const u16 MaxBlockCount,
-                      bool &ReportRegionExhausted) {
+  u16 popBlocksWithCV(SizeClassAllocatorT *SizeClassAllocator, uptr ClassId,
+                      RegionInfo *Region, CompactPtrT *ToArray,
+                      const u16 MaxBlockCount, bool &ReportRegionExhausted) {
     u16 PopCount = 0;
 
     while (true) {
@@ -895,8 +911,8 @@ private:
 
         const bool RegionIsExhausted = Region->Exhausted;
         if (!RegionIsExhausted) {
-          PopCount = populateFreeListAndPopBlocks(C, ClassId, Region, ToArray,
-                                                  MaxBlockCount);
+          PopCount = populateFreeListAndPopBlocks(
+              SizeClassAllocator, ClassId, Region, ToArray, MaxBlockCount);
         }
         ReportRegionExhausted = !RegionIsExhausted && Region->Exhausted;
 
@@ -924,7 +940,8 @@ private:
       // blocks were used up right after the refillment. Therefore, we have to
       // check if someone is still populating the freelist.
       ScopedLock FL(Region->FLLock);
-      PopCount = popBlocksImpl(C, ClassId, Region, ToArray, MaxBlockCount);
+      PopCount = popBlocksImpl(SizeClassAllocator, ClassId, Region, ToArray,
+                               MaxBlockCount);
       if (PopCount != 0U)
         break;
 
@@ -938,7 +955,8 @@ private:
       // `pushBatchClassBlocks()` and `mergeGroupsToReleaseBack()`.
       Region->FLLockCV.wait(Region->FLLock);
 
-      PopCount = popBlocksImpl(C, ClassId, Region, ToArray, MaxBlockCount);
+      PopCount = popBlocksImpl(SizeClassAllocator, ClassId, Region, ToArray,
+                               MaxBlockCount);
       if (PopCount != 0U)
         break;
     }
@@ -946,13 +964,13 @@ private:
     return PopCount;
   }
 
-  u16 popBlocksImpl(CacheT *C, uptr ClassId, RegionInfo *Region,
-                    CompactPtrT *ToArray, const u16 MaxBlockCount)
-      REQUIRES(Region->FLLock) {
+  u16 popBlocksImpl(SizeClassAllocatorT *SizeClassAllocator, uptr ClassId,
+                    RegionInfo *Region, CompactPtrT *ToArray,
+                    const u16 MaxBlockCount) REQUIRES(Region->FLLock) {
     if (Region->FreeListInfo.BlockList.empty())
       return 0U;
 
-    SinglyLinkedList<TransferBatchT> &Batches =
+    SinglyLinkedList<BatchT> &Batches =
         Region->FreeListInfo.BlockList.front()->Batches;
 
     if (Batches.empty()) {
@@ -961,8 +979,8 @@ private:
       Region->FreeListInfo.BlockList.pop_front();
 
       // Block used by `BatchGroup` is from BatchClassId. Turn the block into
-      // `TransferBatch` with single block.
-      TransferBatchT *TB = reinterpret_cast<TransferBatchT *>(BG);
+      // `Batch` with single block.
+      BatchT *TB = reinterpret_cast<BatchT *>(BG);
       ToArray[0] =
           compactPtr(SizeClassMap::BatchClassId, reinterpret_cast<uptr>(TB));
       Region->FreeListInfo.PoppedBlocks += 1;
@@ -970,18 +988,18 @@ private:
     }
 
     // So far, instead of always filling blocks to `MaxBlockCount`, we only
-    // examine single `TransferBatch` to minimize the time spent in the primary
-    // allocator. Besides, the sizes of `TransferBatch` and
-    // `CacheT::getMaxCached()` may also impact the time spent on accessing the
-    // primary allocator.
+    // examine single `Batch` to minimize the time spent in the primary
+    // allocator. Besides, the sizes of `Batch` and
+    // `SizeClassAllocatorT::getMaxCached()` may also impact the time spent on
+    // accessing the primary allocator.
     // TODO(chiahungduan): Evaluate if we want to always prepare `MaxBlockCount`
-    // blocks and/or adjust the size of `TransferBatch` according to
-    // `CacheT::getMaxCached()`.
-    TransferBatchT *B = Batches.front();
+    // blocks and/or adjust the size of `Batch` according to
+    // `SizeClassAllocatorT::getMaxCached()`.
+    BatchT *B = Batches.front();
     DCHECK_NE(B, nullptr);
     DCHECK_GT(B->getCount(), 0U);
 
-    // BachClassId should always take all blocks in the TransferBatch. Read the
+    // BachClassId should always take all blocks in the Batch. Read the
     // comment in `pushBatchClassBlocks()` for more details.
     const u16 PopCount = ClassId == SizeClassMap::BatchClassId
                              ? B->getCount()
@@ -992,11 +1010,11 @@ private:
     // done without holding `FLLock`.
     if (B->empty()) {
       Batches.pop_front();
-      // `TransferBatch` of BatchClassId is self-contained, no need to
+      // `Batch` of BatchClassId is self-contained, no need to
       // deallocate. Read the comment in `pushBatchClassBlocks()` for more
       // details.
       if (ClassId != SizeClassMap::BatchClassId)
-        C->deallocate(SizeClassMap::BatchClassId, B);
+        SizeClassAllocator->deallocate(SizeClassMap::BatchClassId, B);
 
       if (Batches.empty()) {
         BatchGroupT *BG = Region->FreeListInfo.BlockList.front();
@@ -1005,10 +1023,10 @@ private:
         // We don't keep BatchGroup with zero blocks to avoid empty-checking
         // while allocating. Note that block used for constructing BatchGroup is
         // recorded as free blocks in the last element of BatchGroup::Batches.
-        // Which means, once we pop the last TransferBatch, the block is
+        // Which means, once we pop the last Batch, the block is
         // implicitly deallocated.
         if (ClassId != SizeClassMap::BatchClassId)
-          C->deallocate(SizeClassMap::BatchClassId, BG);
+          SizeClassAllocator->deallocate(SizeClassMap::BatchClassId, BG);
       }
     }
 
@@ -1017,11 +1035,10 @@ private:
     return PopCount;
   }
 
-  NOINLINE u16 populateFreeListAndPopBlocks(CacheT *C, uptr ClassId,
-                                            RegionInfo *Region,
-                                            CompactPtrT *ToArray,
-                                            const u16 MaxBlockCount)
-      REQUIRES(Region->MMLock) EXCLUDES(Region->FLLock) {
+  NOINLINE u16 populateFreeListAndPopBlocks(
+      SizeClassAllocatorT *SizeClassAllocator, uptr ClassId, RegionInfo *Region,
+      CompactPtrT *ToArray, const u16 MaxBlockCount) REQUIRES(Region->MMLock)
+      EXCLUDES(Region->FLLock) {
     if (!Config::getEnableContiguousRegions() &&
         !Region->MemMapInfo.MemMap.isAllocated()) {
       ReservedMemoryT ReservedMemory;
@@ -1040,7 +1057,7 @@ private:
 
     DCHECK(Region->MemMapInfo.MemMap.isAllocated());
     const uptr Size = getSizeByClassId(ClassId);
-    const u16 MaxCount = CacheT::getMaxCached(Size);
+    const u16 MaxCount = SizeClassAllocatorT::getMaxCached(Size);
     const uptr RegionBeg = Region->RegionBeg;
     const uptr MappedUser = Region->MemMapInfo.MappedUser;
     const uptr TotalUserBytes =
@@ -1064,7 +1081,7 @@ private:
         return 0U;
       }
       Region->MemMapInfo.MappedUser += MapSize;
-      C->getStats().add(StatMapped, MapSize);
+      SizeClassAllocator->getStats().add(StatMapped, MapSize);
     }
 
     const u32 NumberOfBlocks =
@@ -1074,8 +1091,7 @@ private:
                              Size));
     DCHECK_GT(NumberOfBlocks, 0);
 
-    constexpr u32 ShuffleArraySize =
-        MaxNumBatches * TransferBatchT::MaxNumCached;
+    constexpr u32 ShuffleArraySize = MaxNumBatches * MaxNumBlocksInBatch;
     CompactPtrT ShuffleArray[ShuffleArraySize];
     DCHECK_LE(NumberOfBlocks, ShuffleArraySize);
 
@@ -1092,7 +1108,8 @@ private:
       for (u32 I = 1; I < NumberOfBlocks; I++) {
         if (UNLIKELY(compactPtrGroup(ShuffleArray[I]) != CurGroup)) {
           shuffle(ShuffleArray + I - N, N, &Region->RandState);
-          pushBlocksImpl(C, ClassId, Region, ShuffleArray + I - N, N,
+          pushBlocksImpl(SizeClassAllocator, ClassId, Region,
+                         ShuffleArray + I - N, N,
                          /*SameGroup=*/true);
           N = 1;
           CurGroup = compactPtrGroup(ShuffleArray[I]);
@@ -1102,14 +1119,15 @@ private:
       }
 
       shuffle(ShuffleArray + NumberOfBlocks - N, N, &Region->RandState);
-      pushBlocksImpl(C, ClassId, Region, &ShuffleArray[NumberOfBlocks - N], N,
+      pushBlocksImpl(SizeClassAllocator, ClassId, Region,
+                     &ShuffleArray[NumberOfBlocks - N], N,
                      /*SameGroup=*/true);
     } else {
       pushBatchClassBlocks(Region, ShuffleArray, NumberOfBlocks);
     }
 
-    const u16 PopCount =
-        popBlocksImpl(C, ClassId, Region, ToArray, MaxBlockCount);
+    const u16 PopCount = popBlocksImpl(SizeClassAllocator, ClassId, Region,
+                                       ToArray, MaxBlockCount);
     DCHECK_NE(PopCount, 0U);
 
     // Note that `PushedBlocks` and `PoppedBlocks` are supposed to only record
@@ -1119,7 +1137,7 @@ private:
     Region->FreeListInfo.PushedBlocks -= NumberOfBlocks;
 
     const uptr AllocatedUser = Size * NumberOfBlocks;
-    C->getStats().add(StatFree, AllocatedUser);
+    SizeClassAllocator->getStats().add(StatFree, AllocatedUser);
     Region->MemMapInfo.AllocatedUser += AllocatedUser;
 
     return PopCount;
@@ -1482,7 +1500,7 @@ private:
       DCHECK_LE(Region->RegionBeg, BatchGroupBase);
       DCHECK_GE(AllocatedUserEnd, BatchGroupBase);
       DCHECK_EQ((Region->RegionBeg - BatchGroupBase) % GroupSize, 0U);
-      // TransferBatches are pushed in front of BG.Batches. The first one may
+      // Batches are pushed in front of BG.Batches. The first one may
       // not have all caches used.
       const uptr NumBlocks = (BG->Batches.size() - 1) * BG->MaxCachedPerBatch +
                              BG->Batches.front()->getCount();
@@ -1737,7 +1755,7 @@ private:
       }
 
       BatchGroupT *Cur = GroupsToRelease.front();
-      TransferBatchT *UnusedTransferBatch = nullptr;
+      BatchT *UnusedBatch = nullptr;
       GroupsToRelease.pop_front();
 
       if (BG->CompactPtrGroupBase == Cur->CompactPtrGroupBase) {
@@ -1746,36 +1764,35 @@ private:
         BG->BytesInBGAtLastCheckpoint = Cur->BytesInBGAtLastCheckpoint;
         const uptr MaxCachedPerBatch = BG->MaxCachedPerBatch;
 
-        // Note that the first TransferBatches in both `Batches` may not be
-        // full and only the first TransferBatch can have non-full blocks. Thus
+        // Note that the first Batches in both `Batches` may not be
+        // full and only the first Batch can have non-full blocks. Thus
         // we have to merge them before appending one to another.
         if (Cur->Batches.front()->getCount() == MaxCachedPerBatch) {
           BG->Batches.append_back(&Cur->Batches);
         } else {
-          TransferBatchT *NonFullBatch = Cur->Batches.front();
+          BatchT *NonFullBatch = Cur->Batches.front();
           Cur->Batches.pop_front();
           const u16 NonFullBatchCount = NonFullBatch->getCount();
           // The remaining Batches in `Cur` are full.
           BG->Batches.append_back(&Cur->Batches);
 
           if (BG->Batches.front()->getCount() == MaxCachedPerBatch) {
-            // Only 1 non-full TransferBatch, push it to the front.
+            // Only 1 non-full Batch, push it to the front.
             BG->Batches.push_front(NonFullBatch);
           } else {
             const u16 NumBlocksToMove = static_cast<u16>(
                 Min(static_cast<u16>(MaxCachedPerBatch -
                                      BG->Batches.front()->getCount()),
                     NonFullBatchCount));
-            BG->Batches.front()->appendFromTransferBatch(NonFullBatch,
-                                                         NumBlocksToMove);
+            BG->Batches.front()->appendFromBatch(NonFullBatch, NumBlocksToMove);
             if (NonFullBatch->isEmpty())
-              UnusedTransferBatch = NonFullBatch;
+              UnusedBatch = NonFullBatch;
             else
               BG->Batches.push_front(NonFullBatch);
           }
         }
 
-        const u32 NeededSlots = UnusedTransferBatch == nullptr ? 1U : 2U;
+        const u32 NeededSlots = UnusedBatch == nullptr ? 1U : 2U;
         if (UNLIKELY(Idx + NeededSlots > MaxUnusedSize)) {
           ScopedLock L(BatchClassRegion->FLLock);
           pushBatchClassBlocks(BatchClassRegion, Blocks, Idx);
@@ -1785,10 +1802,9 @@ private:
         }
         Blocks[Idx++] =
             compactPtr(SizeClassMap::BatchClassId, reinterpret_cast<uptr>(Cur));
-        if (UnusedTransferBatch) {
-          Blocks[Idx++] =
-              compactPtr(SizeClassMap::BatchClassId,
-                         reinterpret_cast<uptr>(UnusedTransferBatch));
+        if (UnusedBatch) {
+          Blocks[Idx++] = compactPtr(SizeClassMap::BatchClassId,
+                                     reinterpret_cast<uptr>(UnusedBatch));
         }
         Prev = BG;
         BG = BG->Next;
