@@ -835,6 +835,18 @@ def FeatureUseFixedOverScalableIfEqualCost : SubtargetFeature<"use-fixed-over-sc
 def FeatureAvoidLDAPUR : SubtargetFeature<"avoid-ldapur", "AvoidLDAPUR", "true",
   "Prefer add+ldapr to offset ldapur">;
 
+// Some INC/DEC forms have better latency and throughput than ADDVL.
+def FeatureDisableFastIncVL : SubtargetFeature<"disable-fast-inc-vl",
+                                               "HasDisableFastIncVL", "true",
+                                               "Do not prefer INC/DEC, ALL, { 1, 2, 4 } over ADDVL">;
+
+// On most processors we want to avoid moving from WZR to vector registers
+// (relying on materializing 0 to a FPR and moving from there instead),
+// but on some (in-order) cores it's preferable to avoid the extra instruction instead.
+def FeatureUseWzrToVecMove : SubtargetFeature<"use-wzr-to-vec-move",
+                                              "UseWzrToVecMove", "true",
+                                              "Move from WZR to insert 0 into vector registers">;
+
 //===----------------------------------------------------------------------===//
 // Architectures.
 //
