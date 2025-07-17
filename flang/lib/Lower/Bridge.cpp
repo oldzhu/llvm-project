@@ -810,11 +810,11 @@ public:
             fir::ExtendedValue read = fir::factory::genMutableBoxRead(
                 *builder, loc, box, /*mayBePolymorphic=*/false);
             if (auto read_arr_box = read.getBoxOf<fir::ArrayBoxValue>()) {
-              fir::factory::genInlinedAllocation(
-                  *builder, loc, *new_box, read_arr_box->getLBounds(),
-                  read_arr_box->getExtents(),
-                  /*lenParams=*/std::nullopt, name,
-                  /*mustBeHeap=*/true);
+              fir::factory::genInlinedAllocation(*builder, loc, *new_box,
+                                                 read_arr_box->getLBounds(),
+                                                 read_arr_box->getExtents(),
+                                                 /*lenParams=*/{}, name,
+                                                 /*mustBeHeap=*/true);
             } else if (auto read_char_arr_box =
                            read.getBoxOf<fir::CharArrayBoxValue>()) {
               fir::factory::genInlinedAllocation(
@@ -825,8 +825,8 @@ public:
             } else if (auto read_char_box =
                            read.getBoxOf<fir::CharBoxValue>()) {
               fir::factory::genInlinedAllocation(*builder, loc, *new_box,
-                                                 /*lbounds=*/std::nullopt,
-                                                 /*extents=*/std::nullopt,
+                                                 /*lbounds=*/{},
+                                                 /*extents=*/{},
                                                  read_char_box->getLen(), name,
                                                  /*mustBeHeap=*/true);
             } else {
@@ -4583,8 +4583,7 @@ private:
     // the static type of the LHS.
     if (Fortran::evaluate::UnwrapExpr<Fortran::evaluate::NullPointer>(
             assign.rhs))
-      return fir::factory::createUnallocatedBox(*builder, loc, lhsBoxType,
-                                                std::nullopt);
+      return fir::factory::createUnallocatedBox(*builder, loc, lhsBoxType, {});
     hlfir::Entity rhs = Fortran::lower::convertExprToHLFIR(
         loc, *this, assign.rhs, localSymbols, rhsContext);
     // Create pointer descriptor value from the RHS.
@@ -5192,7 +5191,7 @@ private:
                               "LEN parameters");
                   lhsRealloc = fir::factory::genReallocIfNeeded(
                       *builder, loc, *lhsMutableBox,
-                      /*shape=*/std::nullopt, lengthParams);
+                      /*shape=*/{}, lengthParams);
                   return lhsRealloc->newValue;
                 }
                 return genExprAddr(assign.lhs, stmtCtx);
@@ -5264,7 +5263,7 @@ private:
               if (lhsIsWholeAllocatable) {
                 assert(lhsRealloc.has_value());
                 fir::factory::finalizeRealloc(*builder, loc, *lhsMutableBox,
-                                              /*lbounds=*/std::nullopt,
+                                              /*lbounds=*/{},
                                               /*takeLboundsIfRealloc=*/false,
                                               *lhsRealloc);
               }
@@ -6052,8 +6051,7 @@ private:
     mlir::func::FuncOp func = fir::FirOpBuilder::createFunction(
         mlir::UnknownLoc::get(context), getModuleOp(),
         fir::NameUniquer::doGenerated("Sham"),
-        mlir::FunctionType::get(context, std::nullopt, std::nullopt),
-        symbolTable);
+        mlir::FunctionType::get(context, {}, {}), symbolTable);
     func.addEntryBlock();
     CHECK(!builder && "Expected builder to be uninitialized");
     builder = new fir::FirOpBuilder(func, bridge.getKindMap(), symbolTable);
