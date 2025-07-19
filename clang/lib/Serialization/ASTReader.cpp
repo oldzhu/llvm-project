@@ -10107,31 +10107,18 @@ ASTRecordReader::readNestedNameSpecifierLoc() {
     }
 
     case NestedNameSpecifier::Namespace: {
-      NamespaceDecl *NS = readDeclAs<NamespaceDecl>();
+      auto *NS = readDeclAs<NamespaceBaseDecl>();
       SourceRange Range = readSourceRange();
       Builder.Extend(Context, NS, Range.getBegin(), Range.getEnd());
       break;
     }
 
-    case NestedNameSpecifier::NamespaceAlias: {
-      NamespaceAliasDecl *Alias = readDeclAs<NamespaceAliasDecl>();
-      SourceRange Range = readSourceRange();
-      Builder.Extend(Context, Alias, Range.getBegin(), Range.getEnd());
-      break;
-    }
-
-    case NestedNameSpecifier::TypeSpec:
-    case NestedNameSpecifier::TypeSpecWithTemplate: {
-      bool Template = readBool();
+    case NestedNameSpecifier::TypeSpec: {
       TypeSourceInfo *T = readTypeSourceInfo();
       if (!T)
         return NestedNameSpecifierLoc();
       SourceLocation ColonColonLoc = readSourceLocation();
-
-      // FIXME: 'template' keyword location not saved anywhere, so we fake it.
-      Builder.Extend(Context,
-                     Template? T->getTypeLoc().getBeginLoc() : SourceLocation(),
-                     T->getTypeLoc(), ColonColonLoc);
+      Builder.Extend(Context, T->getTypeLoc(), ColonColonLoc);
       break;
     }
 
@@ -12982,7 +12969,7 @@ OpenACCClause *ASTRecordReader::readOpenACCClause() {
     for (unsigned I = 0; I < NumArchs; ++I) {
       IdentifierInfo *Ident = readBool() ? readIdentifier() : nullptr;
       SourceLocation Loc = readSourceLocation();
-      Archs.emplace_back(Ident, Loc);
+      Archs.emplace_back(Loc, Ident);
     }
 
     return OpenACCDeviceTypeClause::Create(getContext(), ClauseKind, BeginLoc,

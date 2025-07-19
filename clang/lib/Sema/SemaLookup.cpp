@@ -4560,15 +4560,14 @@ static void getNestedNameSpecifierIdentifiers(
     II = NNS->getAsIdentifier();
     break;
 
-  case NestedNameSpecifier::Namespace:
-    if (NNS->getAsNamespace()->isAnonymousNamespace())
+  case NestedNameSpecifier::Namespace: {
+    const NamespaceBaseDecl *Namespace = NNS->getAsNamespace();
+    if (const auto *NS = dyn_cast<NamespaceDecl>(Namespace);
+        NS && NS->isAnonymousNamespace())
       return;
-    II = NNS->getAsNamespace()->getIdentifier();
+    II = Namespace->getIdentifier();
     break;
-
-  case NestedNameSpecifier::NamespaceAlias:
-    II = NNS->getAsNamespaceAlias()->getIdentifier();
-    break;
+  }
 
   case NestedNameSpecifier::TypeSpecWithTemplate:
   case NestedNameSpecifier::TypeSpec:

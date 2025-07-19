@@ -7091,11 +7091,6 @@ void ASTRecordWriter::AddNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS) {
       AddSourceRange(NNS.getLocalSourceRange());
       break;
 
-    case NestedNameSpecifier::NamespaceAlias:
-      AddDeclRef(NNS.getNestedNameSpecifier()->getAsNamespaceAlias());
-      AddSourceRange(NNS.getLocalSourceRange());
-      break;
-
     case NestedNameSpecifier::TypeSpec:
     case NestedNameSpecifier::TypeSpecWithTemplate:
       Record->push_back(Kind == NestedNameSpecifier::TypeSpecWithTemplate);

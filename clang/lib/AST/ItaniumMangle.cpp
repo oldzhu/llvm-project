@@ -1384,14 +1384,6 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
       Out << "sr";
     mangleSourceNameWithAbiTags(qualifier->getAsNamespace());
     break;
-  case NestedNameSpecifier::NamespaceAlias:
-    if (qualifier->getPrefix())
-      mangleUnresolvedPrefix(qualifier->getPrefix(),
-                             /*recursive*/ true);
-    else
-      Out << "sr";
-    mangleSourceNameWithAbiTags(qualifier->getAsNamespaceAlias());
-    break;
 
   case NestedNameSpecifier::TypeSpec:
   case NestedNameSpecifier::TypeSpecWithTemplate: {
@@ -2196,11 +2188,7 @@ void CXXNameMangler::manglePrefix(NestedNameSpecifier *qualifier) {
     llvm_unreachable("Can't mangle __super specifier");
 
   case NestedNameSpecifier::Namespace:
-    mangleName(qualifier->getAsNamespace());
-    return;
-
-  case NestedNameSpecifier::NamespaceAlias:
-    mangleName(qualifier->getAsNamespaceAlias()->getNamespace());
+    mangleName(qualifier->getAsNamespace()->getNamespace());
     return;
 
   case NestedNameSpecifier::TypeSpec:

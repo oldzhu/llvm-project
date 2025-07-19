@@ -1886,11 +1886,10 @@ ASTNodeImporter::VisitPackExpansionType(const PackExpansionType *T) {
 
 ExpectedType ASTNodeImporter::VisitDependentTemplateSpecializationType(
     const DependentTemplateSpecializationType *T) {
-  auto ToQualifierOrErr = import(T->getQualifier());
-  if (!ToQualifierOrErr)
-    return ToQualifierOrErr.takeError();
-
-  IdentifierInfo *ToName = Importer.Import(T->getIdentifier());
+  const DependentTemplateStorage &DTN = T->getDependentTemplateName();
+  auto QualifierOrErr = import(DTN.getQualifier());
+  if (!QualifierOrErr)
+    return QualifierOrErr.takeError();
 
   SmallVector<TemplateArgument, 2> ToPack;
   ToPack.reserve(T->template_arguments().size());
@@ -1898,7 +1897,10 @@ ExpectedType ASTNodeImporter::VisitDependentTemplateSpecializationType(
     return std::move(Err);
 
   return Importer.getToContext().getDependentTemplateSpecializationType(
-      T->getKeyword(), *ToQualifierOrErr, ToName, ToPack);
+      T->getKeyword(),
+      {*QualifierOrErr, Importer.Import(DTN.getName()),
+       DTN.hasTemplateKeyword()},
+      ToPack);
 }
 
 ExpectedType
@@ -1908,18 +1910,8 @@ ASTNodeImporter::VisitDependentNameType(const DependentNameType *T) {
     return ToQualifierOrErr.takeError();
 
   IdentifierInfo *Name = Importer.Import(T->getIdentifier());
-
-  QualType Canon;
-  if (T != T->getCanonicalTypeInternal().getTypePtr()) {
-    if (ExpectedType TyOrErr = import(T->getCanonicalTypeInternal()))
-      Canon = (*TyOrErr).getCanonicalType();
-    else
-      return TyOrErr.takeError();
-  }
-
   return Importer.getToContext().getDependentNameType(T->getKeyword(),
-                                                      *ToQualifierOrErr,
-                                                      Name, Canon);
+                                                      *ToQualifierOrErr, Name);
 }
 
 ExpectedType
@@ -10071,16 +10063,9 @@ ASTImporter::Import(NestedNameSpecifier *FromNNS) {
   case NestedNameSpecifier::Namespace:
     if (ExpectedDecl NSOrErr = Import(FromNNS->getAsNamespace())) {
       return NestedNameSpecifier::Create(ToContext, Prefix,
-                                         cast<NamespaceDecl>(*NSOrErr));
+                                         cast<NamespaceBaseDecl>(*NSOrErr));
     } else
       return NSOrErr.takeError();
-
-  case NestedNameSpecifier::NamespaceAlias:
-    if (ExpectedDecl NSADOrErr = Import(FromNNS->getAsNamespaceAlias()))
-      return NestedNameSpecifier::Create(ToContext, Prefix,
-                                         cast<NamespaceAliasDecl>(*NSADOrErr));
-    else
-      return NSADOrErr.takeError();
 
   case NestedNameSpecifier::Global:
     return NestedNameSpecifier::GlobalSpecifier(ToContext);
@@ -10093,12 +10078,8 @@ ASTImporter::Import(NestedNameSpecifier *FromNNS) {
       return RDOrErr.takeError();
 
   case NestedNameSpecifier::TypeSpec:
-  case NestedNameSpecifier::TypeSpecWithTemplate:
     if (ExpectedTypePtr TyOrErr = Import(FromNNS->getAsType())) {
-      bool TSTemplate =
-          FromNNS->getKind() == NestedNameSpecifier::TypeSpecWithTemplate;
-      return NestedNameSpecifier::Create(ToContext, Prefix, TSTemplate,
-                                         *TyOrErr);
+      return NestedNameSpecifier::Create(ToContext, Prefix, *TyOrErr);
     } else {
       return TyOrErr.takeError();
     }
@@ -10151,26 +10132,13 @@ ASTImporter::Import(NestedNameSpecifierLoc FromNNS) {
                      ToLocalEndLoc);
       break;
 
-    case NestedNameSpecifier::NamespaceAlias:
-      Builder.Extend(getToContext(), Spec->getAsNamespaceAlias(),
-                     ToLocalBeginLoc, ToLocalEndLoc);
-      break;
-
-    case NestedNameSpecifier::TypeSpec:
-    case NestedNameSpecifier::TypeSpecWithTemplate: {
+    case NestedNameSpecifier::TypeSpec: {
       SourceLocation ToTLoc;
       if (Error Err = importInto(ToTLoc, NNS.getTypeLoc().getBeginLoc()))
         return std::move(Err);
       TypeSourceInfo *TSI = getToContext().getTrivialTypeSourceInfo(
-            QualType(Spec->getAsType(), 0), ToTLoc);
-      if (Kind == NestedNameSpecifier::TypeSpecWithTemplate)
-        // ToLocalBeginLoc is here the location of the 'template' keyword.
-        Builder.Extend(getToContext(), ToLocalBeginLoc, TSI->getTypeLoc(),
-                       ToLocalEndLoc);
-      else
-        // No location for 'template' keyword here.
-        Builder.Extend(getToContext(), SourceLocation{}, TSI->getTypeLoc(),
-                       ToLocalEndLoc);
+          QualType(Spec->getAsType(), 0), ToTLoc);
+      Builder.Extend(getToContext(), TSI->getTypeLoc(), ToLocalEndLoc);
       break;
     }
 
@@ -10239,14 +10207,8 @@ Expected<TemplateName> ASTImporter::Import(TemplateName From) {
     auto QualifierOrErr = Import(DTN->getQualifier());
     if (!QualifierOrErr)
       return QualifierOrErr.takeError();
-
-    if (DTN->isIdentifier()) {
-      return ToContext.getDependentTemplateName(*QualifierOrErr,
-                                                Import(DTN->getIdentifier()));
-    }
-
-    return ToContext.getDependentTemplateName(*QualifierOrErr,
-                                              DTN->getOperator());
+    return ToContext.getDependentTemplateName(
+        {*QualifierOrErr, Import(DTN->getName()), DTN->hasTemplateKeyword()});
   }
 
   case TemplateName::SubstTemplateTemplateParm: {
@@ -10615,6 +10577,13 @@ IdentifierInfo *ASTImporter::Import(const IdentifierInfo *FromId) {
     ToId->setBuiltinID(FromId->getBuiltinID());
 
   return ToId;
+}
+
+IdentifierOrOverloadedOperator
+ASTImporter::Import(IdentifierOrOverloadedOperator FromIO) {
+  if (const IdentifierInfo *FromII = FromIO.getIdentifier())
+    return Import(FromII);
+  return FromIO.getOperator();
 }
 
 Expected<Selector> ASTImporter::Import(Selector FromSel) {
