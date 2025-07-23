@@ -75,27 +75,50 @@ mlir::LogicalResult IsContiguousBoxCoversion::matchAndRewrite(
     fir::IsContiguousBoxOp op, mlir::PatternRewriter &rewriter) const {
   mlir::Location loc = op.getLoc();
   fir::FirOpBuilder builder(rewriter, op.getOperation());
-  // TODO: support preferInlineImplementation.
-  bool doInline = options.preferInlineImplementation && false;
-  if (!doInline) {
-    // Generate Fortran runtime call.
-    mlir::Value result;
-    if (op.getInnermost()) {
-      mlir::Value one =
-          builder.createIntegerConstant(loc, builder.getI32Type(), 1);
-      result =
-          fir::runtime::genIsContiguousUpTo(builder, loc, op.getBox(), one);
-    } else {
-      result = fir::runtime::genIsContiguous(builder, loc, op.getBox());
+  mlir::Value box = op.getBox();
+
+  if (options.preferInlineImplementation) {
+    auto boxType = mlir::cast<fir::BaseBoxType>(box.getType());
+    unsigned rank = fir::getBoxRank(boxType);
+
+    // If rank is one, or 'innermost' attribute is set and
+    // it is not a scalar, then generate a simple comparison
+    // for the leading dimension: (stride == elem_size || extent == 0).
+    //
+    // The scalar cases are supposed to be optimized by the canonicalization.
+    if (rank == 1 || (op.getInnermost() && rank > 0)) {
+      mlir::Type idxTy = builder.getIndexType();
+      auto eleSize = fir::BoxEleSizeOp::create(builder, loc, idxTy, box);
+      mlir::Value zero = fir::factory::createZeroValue(builder, loc, idxTy);
+      auto dimInfo =
+          fir::BoxDimsOp::create(builder, loc, idxTy, idxTy, idxTy, box, zero);
+      mlir::Value stride = dimInfo.getByteStride();
+      mlir::Value pred1 = mlir::arith::CmpIOp::create(
+          builder, loc, mlir::arith::CmpIPredicate::eq, eleSize, stride);
+      mlir::Value extent = dimInfo.getExtent();
+      mlir::Value pred2 = mlir::arith::CmpIOp::create(
+          builder, loc, mlir::arith::CmpIPredicate::eq, extent, zero);
+      mlir::Value result =
+          mlir::arith::OrIOp::create(builder, loc, pred1, pred2);
+      result = builder.createConvert(loc, op.getType(), result);
+      rewriter.replaceOp(op, result);
+      return mlir::success();
     }
-    result = builder.createConvert(loc, op.getType(), result);
-    rewriter.replaceOp(op, result);
-    return mlir::success();
+    // TODO: support arrays with multiple dimensions.
   }
 
-  // Generate inline implementation.
-  TODO(loc, "inline IsContiguousBoxOp");
-  return mlir::failure();
+  // Generate Fortran runtime call.
+  mlir::Value result;
+  if (op.getInnermost()) {
+    mlir::Value one =
+        builder.createIntegerConstant(loc, builder.getI32Type(), 1);
+    result = fir::runtime::genIsContiguousUpTo(builder, loc, box, one);
+  } else {
+    result = fir::runtime::genIsContiguous(builder, loc, box);
+  }
+  result = builder.createConvert(loc, op.getType(), result);
+  rewriter.replaceOp(op, result);
+  return mlir::success();
 }
 
 /// Generate a call to Size runtime function or an inline
@@ -169,7 +192,7 @@ public:
         // TODO Should this be a heap allocation instead? For now, we allocate
         // on the stack for each loop iteration.
         mlir::Value localAlloc =
-            rewriter.create<fir::AllocaOp>(loop.getLoc(), localizer.getType());
+            fir::AllocaOp::create(rewriter, loop.getLoc(), localizer.getType());
 
         auto cloneLocalizerRegion = [&](mlir::Region &region,
                                         mlir::ValueRange regionArgs,
@@ -235,8 +258,8 @@ public:
     for (auto [lb, ub, st, iv] :
          llvm::zip_equal(loop.getLowerBound(), loop.getUpperBound(),
                          loop.getStep(), *loop.getLoopInductionVars())) {
-      innermostUnorderdLoop = rewriter.create<fir::DoLoopOp>(
-          doConcurentOp.getLoc(), lb, ub, st,
+      innermostUnorderdLoop = fir::DoLoopOp::create(
+          rewriter, doConcurentOp.getLoc(), lb, ub, st,
           /*unordred=*/true, /*finalCountValue=*/false,
           /*iterArgs=*/mlir::ValueRange{}, loop.getReduceVars(),
           loop.getReduceAttrsAttr());
