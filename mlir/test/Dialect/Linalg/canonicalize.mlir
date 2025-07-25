@@ -1882,3 +1882,131 @@ func.func @fold_cast_unpack_dynamic_tile_size(
       into %res {test_attr} : tensor<1x1x?x1xi32> -> tensor<7x?xi32>
     return %unpack : tensor<7x?xi32>
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// linalg.unpack + tensor.extract_slice
+//===----------------------------------------------------------------------===//
+
+func.func @fold_extract_slice_into_unpack_slicing_trailing_dim(%src : tensor<28x2x1x16x16xf32>, %dest : tensor<28x28x15xf32>) -> tensor<28x28x10xf32> {
+  %unpack = linalg.unpack %src
+      outer_dims_perm = [0, 1, 2]
+      inner_dims_pos = [1, 2]
+      inner_tiles = [16, 16]
+      into %dest : tensor<28x2x1x16x16xf32> -> tensor<28x28x15xf32>
+  %extracted_slice = tensor.extract_slice %unpack
+      [0, 0, 0] [28, 28, 10] [1, 1, 1] : tensor<28x28x15xf32> to tensor<28x28x10xf32>
+  return %extracted_slice : tensor<28x28x10xf32>
+}
+// CHECK-LABEL: func @fold_extract_slice_into_unpack_slicing_trailing_dim
+//  CHECK-SAME:     %[[SRC:[a-zA-Z0-9]+]]
+//  CHECK-SAME:     %[[DEST:[a-zA-Z0-9]+]]
+//       CHECK:   %[[DEST_SLICE:.+]] = tensor.extract_slice %[[DEST]]
+//  CHECK-SAME:     [0, 0, 0] [28, 28, 10] [1, 1, 1]
+//       CHECK:   %[[UNPACK:.+]] = linalg.unpack %[[SRC]]
+//  CHECK-SAME:       into %[[DEST_SLICE]]
+//       CHECK:   return %[[UNPACK]]
+
+// -----
+
+// The available dimension size is [17, 32], because CeilDiv(%d1, 16) == 2.
+
+func.func @fold_extract_slice_into_unpack_slicing_dim_1(%src : tensor<28x2x1x16x16xf32>, %dest : tensor<28x28x15xf32>) -> tensor<28x17x15xf32> {
+  %unpack = linalg.unpack %src
+      inner_dims_pos = [1, 2]
+      inner_tiles = [16, 16]
+      into %dest : tensor<28x2x1x16x16xf32> -> tensor<28x28x15xf32>
+  %extracted_slice = tensor.extract_slice %unpack
+      [0, 0, 0] [28, 17, 15] [1, 1, 1] : tensor<28x28x15xf32> to tensor<28x17x15xf32>
+  return %extracted_slice : tensor<28x17x15xf32>
+}
+// CHECK-LABEL: func @fold_extract_slice_into_unpack_slicing_dim_1(
+//  CHECK-SAME:     %[[SRC:[a-zA-Z0-9]+]]
+//  CHECK-SAME:     %[[DEST:[a-zA-Z0-9]+]]
+//       CHECK:   %[[DEST_SLICE:.+]] = tensor.extract_slice %[[DEST]]
+//  CHECK-SAME:     [0, 0, 0] [28, 17, 15] [1, 1, 1]
+//       CHECK:   %[[UNPACK:.+]] = linalg.unpack %[[SRC]]
+//  CHECK-SAME:       into %[[DEST_SLICE]]
+//       CHECK:   return %[[UNPACK]]
+
+// -----
+
+// The available dimension size is [17, 32], because CeilDiv(%d1, 16) == 2.
+
+func.func @no_fold_extract_slice_into_unpack_artificial_padding(%src : tensor<28x2x1x16x16xf32>, %dest : tensor<28x28x15xf32>) -> tensor<28x16x15xf32> {
+  %unpack = linalg.unpack %src
+      inner_dims_pos = [1, 2]
+      inner_tiles = [16, 16]
+      into %dest : tensor<28x2x1x16x16xf32> -> tensor<28x28x15xf32>
+  %extracted_slice = tensor.extract_slice %unpack
+      [0, 0, 0] [28, 16, 15] [1, 1, 1] : tensor<28x28x15xf32> to tensor<28x16x15xf32>
+  return %extracted_slice : tensor<28x16x15xf32>
+}
+// CHECK-LABEL: func @no_fold_extract_slice_into_unpack_artificial_padding
+//       CHECK:   linalg.unpack
+//       CHECK:   tensor.extract_slice
+
+// -----
+
+func.func @no_fold_extract_slice_into_unpack_dynamic(
+    %src : tensor<28x2x?x16x16xf32>, %dest : tensor<28x32x?xf32>, %size : index
+) -> tensor<28x28x?xf32> {
+  %unpack = linalg.unpack %src
+      outer_dims_perm = [0, 1, 2]
+      inner_dims_pos = [1, 2]
+      inner_tiles = [16, 16]
+      into %dest : tensor<28x2x?x16x16xf32> -> tensor<28x32x?xf32>
+  %extracted_slice = tensor.extract_slice %unpack
+      [0, 0, 0] [28, 28, %size] [1, 1, 1] : tensor<28x32x?xf32> to tensor<28x28x?xf32>
+  return %extracted_slice : tensor<28x28x?xf32>
+}
+// CHECK-LABEL: func @no_fold_extract_slice_into_unpack_dynamic
+//       CHECK:   linalg.unpack
+//       CHECK:   tensor.extract_slice
+
+// -----
+
+func.func @no_fold_extract_slice_into_unpack_rank_reducing(
+    %src : tensor<28x2x16xf32>, %dest : tensor<28x32xf32>
+) -> tensor<28xf32> {
+  %unpack = linalg.unpack %src
+      outer_dims_perm = [0, 1]
+      inner_dims_pos = [1]
+      inner_tiles = [16]
+      into %dest : tensor<28x2x16xf32> -> tensor<28x32xf32>
+  %extracted_slice = tensor.extract_slice %unpack
+      [0, 0] [1, 28] [1, 1] : tensor<28x32xf32> to tensor<28xf32>
+  return %extracted_slice : tensor<28xf32>
+}
+
+// CHECK-LABEL: func @no_fold_extract_slice_into_unpack_rank_reducing
+//  CHECK-SAME:     %[[SRC:.+]]: tensor<28x2x16xf32>
+//  CHECK-SAME:     %[[DEST:.+]]: tensor<28x32xf32>
+//       CHECK:   %[[UNPACK:.+]] = linalg.unpack %[[SRC]]
+//  CHECK-SAME:       into %[[DEST]]
+//       CHECK:   %[[SLICE:.+]] = tensor.extract_slice %[[UNPACK]]
+//       CHECK:   return %[[SLICE]]
+
+// -----
+
+func.func @no_fold_extract_slice_into_unpack_non_zero_offset(
+    %src : tensor<28x2x16xf32>, %dest : tensor<28x32xf32>
+) -> tensor<28x28xf32> {
+  %unpack = linalg.unpack %src
+      outer_dims_perm = [0, 1]
+      inner_dims_pos = [1]
+      inner_tiles = [16]
+      into %dest : tensor<28x2x16xf32> -> tensor<28x32xf32>
+  %extracted_slice = tensor.extract_slice %unpack
+      [0, 1] [28, 28] [1, 1] : tensor<28x32xf32> to tensor<28x28xf32>
+  return %extracted_slice : tensor<28x28xf32>
+}
+
+// CHECK-LABEL: func @no_fold_extract_slice_into_unpack_non_zero_offset
+//  CHECK-SAME:     %[[SRC:.+]]: tensor<28x2x16xf32>
+//  CHECK-SAME:     %[[DEST:.+]]: tensor<28x32xf32>
+//       CHECK:   %[[UNPACK:.+]] = linalg.unpack %[[SRC]]
+//  CHECK-SAME:       into %[[DEST]]
+//       CHECK:   %[[SLICE:.+]] = tensor.extract_slice %[[UNPACK]]
+//       CHECK:   return %[[SLICE]]
