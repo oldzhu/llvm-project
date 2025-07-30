@@ -6,6 +6,7 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 load(":libc_configure_options.bzl", "LIBC_CONFIGURE_OPTIONS")
 load(":libc_namespace.bzl", "LIBC_NAMESPACE")
 load(":platforms.bzl", "PLATFORM_CPU_X86_64")
@@ -52,7 +53,7 @@ def _libc_library(name, **kwargs):
     for attr in ["copts", "local_defines"]:
         if attr in kwargs:
             fail("disallowed attribute: '{}' in rule: '{}'".format(attr, name))
-    native.cc_library(
+    cc_library(
         name = name,
         copts = libc_common_copts(),
         local_defines = LIBC_CONFIGURE_OPTIONS,
@@ -184,7 +185,7 @@ def libc_release_library(
         name = name + "_textual_hdrs",
         libs = libc_functions,
     )
-    native.cc_library(
+    cc_library(
         name = name + "_textual_hdr_library",
         textual_hdrs = [":" + name + "_textual_hdrs"],
     )
@@ -193,8 +194,7 @@ def libc_release_library(
         "LLVM_LIBC_FUNCTION_ATTR_" + name + "='LLVM_LIBC_EMPTY, [[gnu::weak]]'"
         for name in weak_symbols
     ]
-
-    native.cc_library(
+    cc_library(
         name = name,
         srcs = [":" + name + "_srcs"],
         copts = libc_common_copts() + libc_release_copts(),
@@ -224,12 +224,11 @@ def libc_header_library(name, hdrs, deps = [], **kwargs):
         name = name + "_textual_hdrs",
         libs = deps,
     )
-    native.cc_library(
+    cc_library(
         name = name + "_textual_hdr_library",
         textual_hdrs = [":" + name + "_textual_hdrs"],
     )
-
-    native.cc_library(
+    cc_library(
         name = name,
         # Technically speaking, we should put _hdr_deps in srcs, as they are
         # not a part of this cc_library interface. However, we keep it here to

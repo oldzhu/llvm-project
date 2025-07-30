@@ -11324,7 +11324,7 @@ static SDValue emitFloatCompareMask(SDValue LHS, SDValue RHS, SDValue TVal,
 
 SDValue AArch64TargetLowering::LowerSELECT_CC(
     ISD::CondCode CC, SDValue LHS, SDValue RHS, SDValue TVal, SDValue FVal,
-    iterator_range<SDNode::user_iterator> Users, bool HasNoNaNs,
+    iterator_range<SDNode::user_iterator> Users, SDNodeFlags Flags,
     const SDLoc &DL, SelectionDAG &DAG) const {
   // Handle f128 first, because it will result in a comparison of some RTLIB
   // call result against zero.
@@ -11522,7 +11522,7 @@ SDValue AArch64TargetLowering::LowerSELECT_CC(
           return true;
         }
       })) {
-    bool NoNaNs = getTargetMachine().Options.NoNaNsFPMath || HasNoNaNs;
+    bool NoNaNs = getTargetMachine().Options.NoNaNsFPMath || Flags.hasNoNaNs();
     SDValue VectorCmp =
         emitFloatCompareMask(LHS, RHS, TVal, FVal, CC, NoNaNs, DL, DAG);
     if (VectorCmp)
@@ -11536,7 +11536,7 @@ SDValue AArch64TargetLowering::LowerSELECT_CC(
   AArch64CC::CondCode CC1, CC2;
   changeFPCCToAArch64CC(CC, CC1, CC2);
 
-  if (DAG.getTarget().Options.UnsafeFPMath) {
+  if (Flags.hasNoSignedZeros()) {
     // Transform "a == 0.0 ? 0.0 : x" to "a == 0.0 ? a : x" and
     // "a != 0.0 ? x : 0.0" to "a != 0.0 ? x : a" to avoid materializing 0.0.
     ConstantFPSDNode *RHSVal = dyn_cast<ConstantFPSDNode>(RHS);
@@ -11615,10 +11615,9 @@ SDValue AArch64TargetLowering::LowerSELECT_CC(SDValue Op,
   SDValue RHS = Op.getOperand(1);
   SDValue TVal = Op.getOperand(2);
   SDValue FVal = Op.getOperand(3);
-  bool HasNoNans = Op->getFlags().hasNoNaNs();
+  SDNodeFlags Flags = Op->getFlags();
   SDLoc DL(Op);
-  return LowerSELECT_CC(CC, LHS, RHS, TVal, FVal, Op->users(), HasNoNans, DL,
-                        DAG);
+  return LowerSELECT_CC(CC, LHS, RHS, TVal, FVal, Op->users(), Flags, DL, DAG);
 }
 
 SDValue AArch64TargetLowering::LowerSELECT(SDValue Op,
@@ -11626,7 +11625,6 @@ SDValue AArch64TargetLowering::LowerSELECT(SDValue Op,
   SDValue CCVal = Op->getOperand(0);
   SDValue TVal = Op->getOperand(1);
   SDValue FVal = Op->getOperand(2);
-  bool HasNoNans = Op->getFlags().hasNoNaNs();
   SDLoc DL(Op);
 
   EVT Ty = Op.getValueType();
@@ -11693,8 +11691,8 @@ SDValue AArch64TargetLowering::LowerSELECT(SDValue Op,
                                      DAG.getUNDEF(MVT::f32), FVal);
   }
 
-  SDValue Res =
-      LowerSELECT_CC(CC, LHS, RHS, TVal, FVal, Op->users(), HasNoNans, DL, DAG);
+  SDValue Res = LowerSELECT_CC(CC, LHS, RHS, TVal, FVal, Op->users(),
+                               Op->getFlags(), DL, DAG);
 
   if ((Ty == MVT::f16 || Ty == MVT::bf16) && !Subtarget->hasFullFP16()) {
     return DAG.getTargetExtractSubreg(AArch64::hsub, DL, Ty, Res);
@@ -12291,7 +12289,9 @@ SDValue AArch64TargetLowering::getSqrtEstimate(SDValue Operand,
       SDLoc DL(Operand);
       EVT VT = Operand.getValueType();
 
-      SDNodeFlags Flags = SDNodeFlags::AllowReassociation;
+      // Ensure nodes can be recognized by isAssociativeAndCommutative.
+      SDNodeFlags Flags =
+          SDNodeFlags::AllowReassociation | SDNodeFlags::NoSignedZeros;
 
       // Newton reciprocal square root iteration: E * 0.5 * (3 - X * E^2)
       // AArch64 reciprocal square root iteration instruction: 0.5 * (3 - M * N)
@@ -16673,7 +16673,7 @@ bool AArch64TargetLowering::isProfitableToHoist(Instruction *I) const {
   return !(isFMAFasterThanFMulAndFAdd(*F, Ty) &&
            isOperationLegalOrCustom(ISD::FMA, getValueType(DL, Ty)) &&
            (Options.AllowFPOpFusion == FPOpFusion::Fast ||
-            Options.UnsafeFPMath));
+            I->getFastMathFlags().allowContract()));
 }
 
 // All 32-bit GPR operations implicitly zero the high-half of the corresponding
@@ -26898,6 +26898,23 @@ static SDValue performSHLCombine(SDNode *N,
   return DAG.getNode(ISD::AND, DL, VT, NewShift, NewRHS);
 }
 
+static SDValue performRNDRCombine(SDNode *N, SelectionDAG &DAG) {
+  unsigned IntrinsicID = N->getConstantOperandVal(1);
+  auto Register =
+      (IntrinsicID == Intrinsic::aarch64_rndr ? AArch64SysReg::RNDR
+                                              : AArch64SysReg::RNDRRS);
+  SDLoc DL(N);
+  SDValue A = DAG.getNode(
+      AArch64ISD::MRS, DL, DAG.getVTList(MVT::i64, FlagsVT, MVT::Other),
+      N->getOperand(0), DAG.getConstant(Register, DL, MVT::i32));
+  SDValue B = DAG.getNode(
+      AArch64ISD::CSINC, DL, MVT::i32, DAG.getConstant(0, DL, MVT::i32),
+      DAG.getConstant(0, DL, MVT::i32),
+      DAG.getConstant(AArch64CC::NE, DL, MVT::i32), A.getValue(1));
+  return DAG.getMergeValues(
+      {A, DAG.getZExtOrTrunc(B, DL, MVT::i1), A.getValue(2)}, DL);
+}
+
 SDValue AArch64TargetLowering::PerformDAGCombine(SDNode *N,
                                                  DAGCombinerInfo &DCI) const {
   SelectionDAG &DAG = DCI.DAG;
@@ -27213,22 +27230,8 @@ SDValue AArch64TargetLowering::PerformDAGCombine(SDNode *N,
     case Intrinsic::aarch64_sve_st1_scatter_scalar_offset:
       return performScatterStoreCombine(N, DAG, AArch64ISD::SST1_IMM_PRED);
     case Intrinsic::aarch64_rndr:
-    case Intrinsic::aarch64_rndrrs: {
-      unsigned IntrinsicID = N->getConstantOperandVal(1);
-      auto Register =
-          (IntrinsicID == Intrinsic::aarch64_rndr ? AArch64SysReg::RNDR
-                                                  : AArch64SysReg::RNDRRS);
-      SDLoc DL(N);
-      SDValue A = DAG.getNode(
-          AArch64ISD::MRS, DL, DAG.getVTList(MVT::i64, FlagsVT, MVT::Other),
-          N->getOperand(0), DAG.getConstant(Register, DL, MVT::i32));
-      SDValue B = DAG.getNode(
-          AArch64ISD::CSINC, DL, MVT::i32, DAG.getConstant(0, DL, MVT::i32),
-          DAG.getConstant(0, DL, MVT::i32),
-          DAG.getConstant(AArch64CC::NE, DL, MVT::i32), A.getValue(1));
-      return DAG.getMergeValues(
-          {A, DAG.getZExtOrTrunc(B, DL, MVT::i1), A.getValue(2)}, DL);
-    }
+    case Intrinsic::aarch64_rndrrs:
+      return performRNDRCombine(N, DAG);
     case Intrinsic::aarch64_sme_ldr_zt:
       return DAG.getNode(AArch64ISD::RESTORE_ZT, SDLoc(N),
                          DAG.getVTList(MVT::Other), N->getOperand(0),
