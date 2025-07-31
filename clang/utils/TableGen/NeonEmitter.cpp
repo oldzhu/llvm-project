@@ -1364,7 +1364,7 @@ void Intrinsic::emitBodyAsBuiltinCall() {
     LocalCK = ClassB;
 
   if (!getReturnType().isVoid() && !SRet)
-    S += "(" + RetVar.getType().str() + ") ";
+    S += "__builtin_bit_cast(" + RetVar.getType().str() + ", ";
 
   S += "__builtin_neon_" + mangleName(std::string(N), LocalCK) + "(";
 
@@ -1384,11 +1384,12 @@ void Intrinsic::emitBodyAsBuiltinCall() {
         Type T2 = T;
         T2.makeOneVector();
         T2.makeInteger(8, /*Sign=*/true);
-        Cast = "(" + T2.str() + ")";
+        Cast = "__builtin_bit_cast(" + T2.str() + ", ";
       }
 
       for (unsigned J = 0; J < T.getNumVectors(); ++J)
-        S += Cast + V.getName() + ".val[" + utostr(J) + "], ";
+        S += Cast + V.getName() + ".val[" + utostr(J) + "]" +
+             (Cast.empty() ? ", " : "), ");
       continue;
     }
 
@@ -1396,16 +1397,16 @@ void Intrinsic::emitBodyAsBuiltinCall() {
     Type CastToType = T;
 
     // Check if an explicit cast is needed.
-    if (CastToType.isVector() &&
-        (LocalCK == ClassB || (T.isHalf() && !T.isScalarForMangling()))) {
-      CastToType.makeInteger(8, true);
-      Arg = "(" + CastToType.str() + ")" + Arg;
-    } else if (CastToType.isVector() && LocalCK == ClassI) {
-      if (CastToType.isInteger())
+    if (CastToType.isVector()) {
+      if (LocalCK == ClassB || (T.isHalf() && !T.isScalarForMangling())) {
+        CastToType.makeInteger(8, true);
+        Arg = "__builtin_bit_cast(" + CastToType.str() + ", " + Arg + ")";
+      } else if (LocalCK == ClassI &&
+                 (CastToType.isInteger() || CastToType.isPoly())) {
         CastToType.makeSigned();
-      Arg = "(" + CastToType.str() + ")" + Arg;
+        Arg = "__builtin_bit_cast(" + CastToType.str() + ", " + Arg + ")";
+      }
     }
-
     S += Arg + ", ";
   }
 
@@ -1417,6 +1418,9 @@ void Intrinsic::emitBodyAsBuiltinCall() {
     S.pop_back();
     S.pop_back();
   }
+
+  if (!getReturnType().isVoid() && !SRet)
+    S += ")";
   S += ");";
 
   std::string RetExpr;
