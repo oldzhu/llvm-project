@@ -356,7 +356,7 @@ define i1 @test13_i16(i16 %X, ptr %P) {
 
 define i1 @test13_i128(i128 %X, ptr %P) {
 ; CHECK-LABEL: @test13_i128(
-; CHECK-NEXT:    [[TMP1:%.*]] = trunc i128 [[X:%.*]] to i64
+; CHECK-NEXT:    [[TMP1:%.*]] = trunc nsw i128 [[X:%.*]] to i64
 ; CHECK-NEXT:    [[C:%.*]] = icmp eq i64 [[TMP1]], -1
 ; CHECK-NEXT:    ret i1 [[C]]
 ;
@@ -412,7 +412,7 @@ define ptr @test_index_canon_inbounds(ptr %X, i32 %Idx) {
 
 define ptr @test_index_canon_nusw_nuw(ptr %X, i32 %Idx) {
 ; CHECK-LABEL: @test_index_canon_nusw_nuw(
-; CHECK-NEXT:    [[TMP1:%.*]] = sext i32 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[TMP1:%.*]] = zext nneg i32 [[IDX:%.*]] to i64
 ; CHECK-NEXT:    [[R:%.*]] = getelementptr nusw nuw i32, ptr [[X:%.*]], i64 [[TMP1]]
 ; CHECK-NEXT:    ret ptr [[R]]
 ;
@@ -568,7 +568,7 @@ define i32 @test20(ptr %P, i32 %A, i32 %B) {
 
 define i32 @test20_as1(ptr addrspace(1) %P, i32 %A, i32 %B) {
 ; CHECK-LABEL: @test20_as1(
-; CHECK-NEXT:    [[TMP1:%.*]] = trunc i32 [[A:%.*]] to i16
+; CHECK-NEXT:    [[TMP1:%.*]] = trunc nsw i32 [[A:%.*]] to i16
 ; CHECK-NEXT:    [[T6:%.*]] = icmp eq i16 [[TMP1]], 0
 ; CHECK-NEXT:    [[T7:%.*]] = zext i1 [[T6]] to i32
 ; CHECK-NEXT:    ret i32 [[T7]]
@@ -1322,42 +1322,6 @@ define ptr @PR45084_extra_use(i1 %cond, ptr %p) {
   ret ptr %sel
 }
 
-define ptr @gep_null_inbounds(i64 %idx) {
-; CHECK-LABEL: @gep_null_inbounds(
-; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds i8, ptr null, i64 [[IDX:%.*]]
-; CHECK-NEXT:    ret ptr [[GEP]]
-;
-  %gep = getelementptr inbounds i8, ptr null, i64 %idx
-  ret ptr %gep
-}
-
-define ptr @gep_null_not_inbounds(i64 %idx) {
-; CHECK-LABEL: @gep_null_not_inbounds(
-; CHECK-NEXT:    [[GEP:%.*]] = getelementptr i8, ptr null, i64 [[IDX:%.*]]
-; CHECK-NEXT:    ret ptr [[GEP]]
-;
-  %gep = getelementptr i8, ptr null, i64 %idx
-  ret ptr %gep
-}
-
-define ptr @gep_null_defined(i64 %idx) null_pointer_is_valid {
-; CHECK-LABEL: @gep_null_defined(
-; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds i8, ptr null, i64 [[IDX:%.*]]
-; CHECK-NEXT:    ret ptr [[GEP]]
-;
-  %gep = getelementptr inbounds i8, ptr null, i64 %idx
-  ret ptr %gep
-}
-
-define ptr @gep_null_inbounds_different_type(i64 %idx1, i64 %idx2) {
-; CHECK-LABEL: @gep_null_inbounds_different_type(
-; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds [0 x i8], ptr null, i64 0, i64 [[IDX2:%.*]]
-; CHECK-NEXT:    ret ptr [[GEP]]
-;
-  %gep = getelementptr inbounds [0 x i8], ptr null, i64 %idx1, i64 %idx2
-  ret ptr %gep
-}
-
 define ptr @D98588(ptr %c1, i64 %offset) {
 ; CHECK-LABEL: @D98588(
 ; CHECK-NEXT:    [[C2_NEXT_IDX:%.*]] = shl nsw i64 [[OFFSET:%.*]], 3
@@ -2014,5 +1978,94 @@ define ptr @gep_merge_nusw_const(ptr %p, i64 %idx, i64 %idx2) {
   ret ptr %gep
 }
 
+define ptr @gep_index_trunc_nothing(ptr %p, i128 %idx) {
+; CHECK-LABEL: @gep_index_trunc_nothing(
+; CHECK-NEXT:    [[TMP1:%.*]] = trunc i128 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr i8, ptr %p, i128 %idx
+  ret ptr %gep
+}
+
+define ptr @gep_index_trunc_nuw(ptr %p, i128 %idx) {
+; CHECK-LABEL: @gep_index_trunc_nuw(
+; CHECK-NEXT:    [[TMP1:%.*]] = trunc nuw i128 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr nuw i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr nuw i8, ptr %p, i128 %idx
+  ret ptr %gep
+}
+
+define ptr @gep_index_trunc_nusw(ptr %p, i128 %idx) {
+; CHECK-LABEL: @gep_index_trunc_nusw(
+; CHECK-NEXT:    [[TMP1:%.*]] = trunc nsw i128 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr nusw i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr nusw i8, ptr %p, i128 %idx
+  ret ptr %gep
+}
+
+define ptr @gep_index_trunc_inbounds(ptr %p, i128 %idx) {
+; CHECK-LABEL: @gep_index_trunc_inbounds(
+; CHECK-NEXT:    [[TMP1:%.*]] = trunc nsw i128 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr inbounds i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr inbounds i8, ptr %p, i128 %idx
+  ret ptr %gep
+}
+
+define ptr @gep_index_trunc_nusw_nuw(ptr %p, i128 %idx) {
+; CHECK-LABEL: @gep_index_trunc_nusw_nuw(
+; CHECK-NEXT:    [[TMP1:%.*]] = trunc nuw nsw i128 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr nusw nuw i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr nusw nuw i8, ptr %p, i128 %idx
+  ret ptr %gep
+}
+
+define ptr @gep_index_ext_nothing(ptr %p, i32 %idx) {
+; CHECK-LABEL: @gep_index_ext_nothing(
+; CHECK-NEXT:    [[TMP1:%.*]] = sext i32 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr i8, ptr %p, i32 %idx
+  ret ptr %gep
+}
+
+define ptr @gep_index_ext_nuw(ptr %p, i32 %idx) {
+; CHECK-LABEL: @gep_index_ext_nuw(
+; CHECK-NEXT:    [[TMP1:%.*]] = sext i32 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr nuw i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr nuw i8, ptr %p, i32 %idx
+  ret ptr %gep
+}
+
+define ptr @gep_index_ext_nusw(ptr %p, i32 %idx) {
+; CHECK-LABEL: @gep_index_ext_nusw(
+; CHECK-NEXT:    [[TMP1:%.*]] = sext i32 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr nuw i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr nuw i8, ptr %p, i32 %idx
+  ret ptr %gep
+}
+
+define ptr @gep_index_ext_nusw_nuw(ptr %p, i32 %idx) {
+; CHECK-LABEL: @gep_index_ext_nusw_nuw(
+; CHECK-NEXT:    [[TMP1:%.*]] = zext nneg i32 [[IDX:%.*]] to i64
+; CHECK-NEXT:    [[GEP:%.*]] = getelementptr nusw nuw i8, ptr [[P:%.*]], i64 [[TMP1]]
+; CHECK-NEXT:    ret ptr [[GEP]]
+;
+  %gep = getelementptr nusw nuw i8, ptr %p, i32 %idx
+  ret ptr %gep
+}
 
 !0 = !{!"branch_weights", i32 2, i32 10}
