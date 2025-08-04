@@ -7547,7 +7547,7 @@ TEST_F(FormatTest, NoOperandAlignment) {
                Style);
 }
 
-TEST_F(FormatTest, BreakingBeforeNonAssigmentOperators) {
+TEST_F(FormatTest, BreakingBeforeNonAssignmentOperators) {
   FormatStyle Style = getLLVMStyle();
   Style.BreakBeforeBinaryOperators = FormatStyle::BOS_NonAssignment;
   verifyFormat("int aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa =\n"
