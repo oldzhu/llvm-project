@@ -796,7 +796,7 @@ public:
             auto empty = fir::factory::createUnallocatedBox(
                 *builder, loc, new_box->getBoxTy(), box.nonDeferredLenParams(),
                 {});
-            builder->create<fir::StoreOp>(loc, empty, new_box->getAddr());
+            fir::StoreOp::create(*builder, loc, empty, new_box->getAddr());
             return;
           }
           // Copy allocation status of Allocatables, creating new storage if
@@ -843,7 +843,7 @@ public:
             auto empty = fir::factory::createUnallocatedBox(
                 *builder, loc, new_box->getBoxTy(),
                 new_box->nonDeferredLenParams(), {});
-            builder->create<fir::StoreOp>(loc, empty, new_box->getAddr());
+            fir::StoreOp::create(*builder, loc, empty, new_box->getAddr());
           });
           if_builder.end();
         },
@@ -1309,14 +1309,14 @@ private:
     auto copyData = [&](hlfir::Entity l, hlfir::Entity r) {
       // Dereference RHS and load it if trivial scalar.
       r = hlfir::loadTrivialScalar(loc, *builder, r);
-      builder->create<hlfir::AssignOp>(loc, r, l, isAllocatable);
+      hlfir::AssignOp::create(*builder, loc, r, l, isAllocatable);
     };
 
     if (isPointer) {
       // Set LHS target to the target of RHS (do not copy the RHS
       // target data into the LHS target storage).
-      auto loadVal = builder->create<fir::LoadOp>(loc, rhs);
-      builder->create<fir::StoreOp>(loc, loadVal, lhs);
+      auto loadVal = fir::LoadOp::create(*builder, loc, rhs);
+      fir::StoreOp::create(*builder, loc, loadVal, lhs);
     } else if (isAllocatable &&
                flags.test(Fortran::semantics::Symbol::Flag::OmpCopyIn)) {
       // For copyin allocatable variables, RHS must be copied to lhs
@@ -1370,8 +1370,8 @@ private:
     } else if (lhs.getBoxOf<fir::CharBoxValue>()) {
       fir::factory::CharacterExprHelper{*builder, loc}.createAssign(lhs, rhs);
     } else {
-      auto loadVal = builder->create<fir::LoadOp>(loc, fir::getBase(rhs));
-      builder->create<fir::StoreOp>(loc, loadVal, fir::getBase(lhs));
+      auto loadVal = fir::LoadOp::create(*builder, loc, fir::getBase(rhs));
+      fir::StoreOp::create(*builder, loc, loadVal, fir::getBase(lhs));
     }
   }
 
@@ -1622,7 +1622,7 @@ private:
       blockList.push_back(defaultBlock);
       if (valueList[branchCount - 1] == 0) // Swap IO ERR and default blocks.
         std::swap(blockList[branchCount - 1], blockList[branchCount]);
-      builder->create<fir::SelectOp>(loc, selector, valueList, blockList);
+      fir::SelectOp::create(*builder, loc, selector, valueList, blockList);
       return;
     }
     mlir::Type selectorType = selector.getType();
@@ -1725,19 +1725,25 @@ private:
     Fortran::lower::SymbolBox resultSymBox = lookupSymbol(resultSym);
     mlir::Location loc = toLocation();
     if (!resultSymBox) {
-      mlir::emitError(loc, "internal error when processing function return");
+      // Create a dummy undefined value of the expected return type.
+      // This prevents improper cleanup of StatementContext, which would lead
+      // to a crash due to a block with no terminator. See issue #126452.
+      mlir::FunctionType funcType = builder->getFunction().getFunctionType();
+      mlir::Type resultType = funcType.getResult(0);
+      mlir::Value undefResult = builder->create<fir::UndefOp>(loc, resultType);
+      genExitRoutine(false, undefResult);
       return;
     }
     mlir::Value resultVal = resultSymBox.match(
         [&](const fir::CharBoxValue &x) -> mlir::Value {
           if (Fortran::semantics::IsBindCProcedure(functionSymbol))
-            return builder->create<fir::LoadOp>(loc, x.getBuffer());
+            return fir::LoadOp::create(*builder, loc, x.getBuffer());
           return fir::factory::CharacterExprHelper{*builder, loc}
               .createEmboxChar(x.getBuffer(), x.getLen());
         },
         [&](const fir::MutableBoxValue &x) -> mlir::Value {
           mlir::Value resultRef = resultSymBox.getAddr();
-          mlir::Value load = builder->create<fir::LoadOp>(loc, resultRef);
+          mlir::Value load = fir::LoadOp::create(*builder, loc, resultRef);
           unsigned rank = x.rank();
           if (x.isAllocatable() && rank > 0) {
             // ALLOCATABLE array result must have default lower bounds.
@@ -1753,9 +1759,9 @@ private:
             llvm::SmallVector<mlir::Value> lbounds{rank, one};
             auto shiftTy = fir::ShiftType::get(builder->getContext(), rank);
             mlir::Value shiftOp =
-                builder->create<fir::ShiftOp>(loc, shiftTy, lbounds);
-            load = builder->create<fir::ReboxOp>(
-                loc, load.getType(), load, shiftOp, /*slice=*/mlir::Value{});
+                fir::ShiftOp::create(*builder, loc, shiftTy, lbounds);
+            load = fir::ReboxOp::create(*builder, loc, load.getType(), load,
+                                        shiftOp, /*slice=*/mlir::Value{});
           }
           return load;
         },
@@ -1769,7 +1775,7 @@ private:
           if (resultRef.getType() != resultRefType)
             resultRef = builder->createConvertWithVolatileCast(
                 loc, resultRefType, resultRef);
-          return builder->create<fir::LoadOp>(loc, resultRef);
+          return fir::LoadOp::create(*builder, loc, resultRef);
         });
     genExitRoutine(false, resultVal);
   }
@@ -1795,8 +1801,8 @@ private:
     if (Fortran::semantics::IsFunction(symbol)) {
       genReturnSymbol(symbol);
     } else if (Fortran::semantics::HasAlternateReturns(symbol)) {
-      mlir::Value retval = builder->create<fir::LoadOp>(
-          toLocation(), getAltReturnResult(symbol));
+      mlir::Value retval = fir::LoadOp::create(*builder, toLocation(),
+                                               getAltReturnResult(symbol));
       genExitRoutine(false, retval);
     } else {
       genExitRoutine(false);
@@ -1949,7 +1955,7 @@ private:
     }
     if (!labelList.empty()) {
       auto selectExpr =
-          builder->create<fir::LoadOp>(loc, getSymbolAddress(symbol));
+          fir::LoadOp::create(*builder, loc, getSymbolAddress(symbol));
       // Add a default error target in case the goto is nonconforming.
       mlir::Block *errorBlock =
           builder->getBlock()->splitBlock(builder->getInsertionPoint());
@@ -1961,7 +1967,7 @@ private:
         *builder, loc,
         "Assigned GOTO variable '" + symbol.name().ToString() +
             "' does not have a valid target label value");
-    builder->create<fir::UnreachableOp>(loc);
+    fir::UnreachableOp::create(*builder, loc);
   }
 
   fir::ReduceOperationEnum
@@ -2478,7 +2484,7 @@ private:
       if (!isConst) {
         mlir::Value stepValue = nestSts.back();
         info.stepVariable = builder->createTemporary(loc, stepValue.getType());
-        builder->create<fir::StoreOp>(loc, stepValue, info.stepVariable);
+        fir::StoreOp::create(*builder, loc, stepValue, info.stepVariable);
       }
     }
 
@@ -2491,8 +2497,9 @@ private:
 
         // The loop variable is a doLoop op argument.
         mlir::Type loopVarType = info.getLoopVariableType();
-        auto loopOp = builder->create<fir::DoLoopOp>(
-            loc, lowerValue, upperValue, stepValue, /*unordered=*/false,
+        auto loopOp = fir::DoLoopOp::create(
+            *builder, loc, lowerValue, upperValue, stepValue,
+            /*unordered=*/false,
             /*finalCountValue=*/true,
             builder->createConvert(loc, loopVarType, lowerValue));
         info.loopOp = loopOp;
@@ -2500,7 +2507,7 @@ private:
         mlir::Value loopValue = loopOp.getRegionIterArgs()[0];
 
         // Update the loop variable value in case it has non-index references.
-        builder->create<fir::StoreOp>(loc, loopValue, info.loopVariable);
+        fir::StoreOp::create(*builder, loc, loopValue, info.loopVariable);
         addLoopAnnotationAttr(info, dirs);
         continue;
       }
@@ -2532,13 +2539,13 @@ private:
             builder->create<mlir::arith::SelectOp>(loc, cond, one, tripCount);
       }
       info.tripVariable = builder->createTemporary(loc, tripCount.getType());
-      builder->create<fir::StoreOp>(loc, tripCount, info.tripVariable);
-      builder->create<fir::StoreOp>(loc, lowerValue, info.loopVariable);
+      fir::StoreOp::create(*builder, loc, tripCount, info.tripVariable);
+      fir::StoreOp::create(*builder, loc, lowerValue, info.loopVariable);
 
       // Unstructured loop header - generate loop condition and mask.
       // Note - Currently there is no way to tag a loop as a concurrent loop.
       startBlock(info.headerBlock);
-      tripCount = builder->create<fir::LoadOp>(loc, info.tripVariable);
+      tripCount = fir::LoadOp::create(*builder, loc, info.tripVariable);
       mlir::Value zero =
           builder->createIntegerConstant(loc, tripCount.getType(), 0);
       auto cond = builder->create<mlir::arith::CmpIOp>(
@@ -2566,7 +2573,7 @@ private:
     }
 
     if (genDoConcurrent) {
-      auto loopWrapperOp = builder->create<fir::DoConcurrentOp>(loc);
+      auto loopWrapperOp = fir::DoConcurrentOp::create(*builder, loc);
       builder->setInsertionPointToStart(
           builder->createBlock(&loopWrapperOp.getRegion()));
 
@@ -2576,8 +2583,8 @@ private:
       }
 
       builder->setInsertionPointToEnd(loopWrapperOp.getBody());
-      auto loopOp = builder->create<fir::DoConcurrentLoopOp>(
-          loc, nestLBs, nestUBs, nestSts, /*loopAnnotation=*/nullptr,
+      auto loopOp = fir::DoConcurrentLoopOp::create(
+          *builder, loc, nestLBs, nestUBs, nestSts, /*loopAnnotation=*/nullptr,
           /*local_vars=*/mlir::ValueRange{},
           /*local_syms=*/nullptr, /*reduce_vars=*/mlir::ValueRange{},
           /*reduce_byref=*/nullptr, /*reduce_syms=*/nullptr,
@@ -2597,7 +2604,7 @@ private:
         info.loopOp = loopOp;
         mlir::Value loopValue =
             builder->createConvert(loc, info.getLoopVariableType(), blockArg);
-        builder->create<fir::StoreOp>(loc, loopValue, info.loopVariable);
+        fir::StoreOp::create(*builder, loc, loopValue, info.loopVariable);
 
         if (info.maskExpr) {
           Fortran::lower::StatementContext stmtCtx;
@@ -2605,8 +2612,8 @@ private:
           stmtCtx.finalizeAndReset();
           mlir::Value maskCondCast =
               builder->createConvert(loc, builder->getI1Type(), maskCond);
-          auto ifOp = builder->create<fir::IfOp>(loc, maskCondCast,
-                                                 /*withElseRegion=*/false);
+          auto ifOp = fir::IfOp::create(*builder, loc, maskCondCast,
+                                        /*withElseRegion=*/false);
           builder->setInsertionPointToStart(&ifOp.getThenRegion().front());
         }
       }
@@ -2652,35 +2659,35 @@ private:
         mlir::Value step = builder->createConvert(
             loc, info.getLoopVariableType(), doLoopOp.getStep());
         mlir::Value loopVar =
-            builder->create<fir::LoadOp>(loc, info.loopVariable);
+            fir::LoadOp::create(*builder, loc, info.loopVariable);
         results.push_back(
             builder->create<mlir::arith::AddIOp>(loc, loopVar, step, iofAttr));
-        builder->create<fir::ResultOp>(loc, results);
+        fir::ResultOp::create(*builder, loc, results);
         builder->setInsertionPointAfter(doLoopOp);
         // The loop control variable may be used after the loop.
-        builder->create<fir::StoreOp>(loc, doLoopOp.getResult(1),
-                                      info.loopVariable);
+        fir::StoreOp::create(*builder, loc, doLoopOp.getResult(1),
+                             info.loopVariable);
         continue;
       }
 
       // Unstructured loop - decrement tripVariable and step loopVariable.
       mlir::Value tripCount =
-          builder->create<fir::LoadOp>(loc, info.tripVariable);
+          fir::LoadOp::create(*builder, loc, info.tripVariable);
       mlir::Value one =
           builder->createIntegerConstant(loc, tripCount.getType(), 1);
       tripCount = builder->create<mlir::arith::SubIOp>(loc, tripCount, one);
-      builder->create<fir::StoreOp>(loc, tripCount, info.tripVariable);
-      mlir::Value value = builder->create<fir::LoadOp>(loc, info.loopVariable);
+      fir::StoreOp::create(*builder, loc, tripCount, info.tripVariable);
+      mlir::Value value = fir::LoadOp::create(*builder, loc, info.loopVariable);
       mlir::Value step;
       if (info.stepVariable)
-        step = builder->create<fir::LoadOp>(loc, info.stepVariable);
+        step = fir::LoadOp::create(*builder, loc, info.stepVariable);
       else
         step = genControlValue(info.stepExpr, info);
       if (info.hasRealControl)
         value = builder->create<mlir::arith::AddFOp>(loc, value, step);
       else
         value = builder->create<mlir::arith::AddIOp>(loc, value, step, iofAttr);
-      builder->create<fir::StoreOp>(loc, value, info.loopVariable);
+      fir::StoreOp::create(*builder, loc, value, info.loopVariable);
 
       genBranch(info.headerBlock);
       if (&info != &incrementLoopNestInfo.front()) // not outermost
@@ -2701,8 +2708,8 @@ private:
           Fortran::lower::pft::Evaluation &succ = *e.controlSuccessor;
           bool hasElse = succ.isA<Fortran::parser::ElseIfStmt>() ||
                          succ.isA<Fortran::parser::ElseStmt>();
-          auto ifOp = builder->create<fir::IfOp>(toLocation(), cond,
-                                                 /*withElseRegion=*/hasElse);
+          auto ifOp = fir::IfOp::create(*builder, toLocation(), cond,
+                                        /*withElseRegion=*/hasElse);
           builder->setInsertionPointToStart(&ifOp.getThenRegion().front());
           return ifOp;
         };
@@ -2807,7 +2814,7 @@ private:
                                  llvm::ArrayRef<mlir::NamedAttribute>{
                                      fir::getAdaptToByRefAttr(*builder)});
     mlir::Value cast = builder->createConvert(loc, toTy, inducVar);
-    builder->create<fir::StoreOp>(loc, cast, tmp);
+    fir::StoreOp::create(*builder, loc, cast, tmp);
     addSymbol(*sym, tmp, /*force=*/true);
   }
 
@@ -2889,11 +2896,11 @@ private:
                          lowerExpr(*Fortran::semantics::GetExpr(*optStep)))
                    : builder->createIntegerConstant(loc, idxTy, 1);
         }
-        auto lp = builder->create<fir::DoLoopOp>(
-            loc, lb, ub, by, /*unordered=*/true,
+        auto lp = fir::DoLoopOp::create(
+            *builder, loc, lb, ub, by, /*unordered=*/true,
             /*finalCount=*/false, explicitIterSpace.getInnerArgs());
         if ((!loops.empty() || !outermost) && !lp.getRegionIterArgs().empty())
-          builder->create<fir::ResultOp>(loc, lp.getResults());
+          fir::ResultOp::create(*builder, loc, lp.getResults());
         explicitIterSpace.setInnerArgs(lp.getRegionIterArgs());
         builder->setInsertionPointToStart(lp.getBody());
         forceControlVariableBinding(ctrlVar, lp.getInductionVar());
@@ -2911,12 +2918,12 @@ private:
             genExprValue(*Fortran::semantics::GetExpr(mask.value()), stmtCtx);
         mlir::Value cond =
             builder->createConvert(loc, i1Ty, fir::getBase(maskExv));
-        auto ifOp = builder->create<fir::IfOp>(
-            loc, explicitIterSpace.innerArgTypes(), cond,
-            /*withElseRegion=*/true);
-        builder->create<fir::ResultOp>(loc, ifOp.getResults());
+        auto ifOp = fir::IfOp::create(*builder, loc,
+                                      explicitIterSpace.innerArgTypes(), cond,
+                                      /*withElseRegion=*/true);
+        fir::ResultOp::create(*builder, loc, ifOp.getResults());
         builder->setInsertionPointToStart(&ifOp.getElseRegion().front());
-        builder->create<fir::ResultOp>(loc, explicitIterSpace.getInnerArgs());
+        fir::ResultOp::create(*builder, loc, explicitIterSpace.getInnerArgs());
         builder->setInsertionPointToStart(&ifOp.getThenRegion().front());
       }
     };
@@ -3049,11 +3056,11 @@ private:
         exprVal = builder->createConvert(loc, builder->getI1Type(), exprVal);
       if (innerInsertionPoint.isSet())
         builder->restoreInsertionPoint(innerInsertionPoint);
-      builder->create<hlfir::YieldOp>(loc, exprVal);
+      hlfir::YieldOp::create(*builder, loc, exprVal);
     };
     for (const Fortran::parser::ConcurrentControl &control :
          std::get<std::list<Fortran::parser::ConcurrentControl>>(header.t)) {
-      auto forallOp = builder->create<hlfir::ForallOp>(loc);
+      auto forallOp = hlfir::ForallOp::create(*builder, loc);
       if (isOutterForall && !outerForall)
         outerForall = forallOp;
       evaluateControl(std::get<1>(control.t), forallOp.getLbRegion());
@@ -3070,13 +3077,13 @@ private:
       mlir::Type controlVarType = genType(*controlVar);
       mlir::Block *forallBody = builder->createBlock(&forallOp.getBody(), {},
                                                      {controlVarType}, {loc});
-      auto forallIndex = builder->create<hlfir::ForallIndexOp>(
-          loc, fir::ReferenceType::get(controlVarType),
+      auto forallIndex = hlfir::ForallIndexOp::create(
+          *builder, loc, fir::ReferenceType::get(controlVarType),
           forallBody->getArguments()[0],
           builder->getStringAttr(controlVar->name().ToString()));
       localSymbols.addVariableDefinition(*controlVar, forallIndex,
                                          /*force=*/true);
-      auto end = builder->create<fir::FirEndOp>(loc);
+      auto end = fir::FirEndOp::create(*builder, loc);
       builder->setInsertionPoint(end);
     }
 
@@ -3084,10 +3091,10 @@ private:
             std::get<std::optional<Fortran::parser::ScalarLogicalExpr>>(
                 header.t)) {
       // Create hlfir.forall_mask and set insertion point in its body.
-      auto forallMaskOp = builder->create<hlfir::ForallMaskOp>(loc);
+      auto forallMaskOp = hlfir::ForallMaskOp::create(*builder, loc);
       evaluateControl(*maskExpr, forallMaskOp.getMaskRegion(), /*isMask=*/true);
       builder->createBlock(&forallMaskOp.getBody());
-      auto end = builder->create<fir::FirEndOp>(loc);
+      auto end = fir::FirEndOp::create(*builder, loc);
       builder->setInsertionPoint(end);
     }
   }
@@ -3349,9 +3356,9 @@ private:
               loc, 1); // Use index type directly
 
         // Ensure lb, ub, and step are of index type using fir.convert
-        lb = builder->create<fir::ConvertOp>(loc, idxTy, lb);
-        ub = builder->create<fir::ConvertOp>(loc, idxTy, ub);
-        step = builder->create<fir::ConvertOp>(loc, idxTy, step);
+        lb = fir::ConvertOp::create(*builder, loc, idxTy, lb);
+        ub = fir::ConvertOp::create(*builder, loc, idxTy, ub);
+        step = fir::ConvertOp::create(*builder, loc, idxTy, step);
 
         lbs.push_back(lb);
         ubs.push_back(ub);
@@ -3429,8 +3436,8 @@ private:
       }
     }
 
-    auto op = builder->create<cuf::KernelOp>(
-        loc, gridValues, blockValues, streamAddr, lbs, ubs, steps, n,
+    auto op = cuf::KernelOp::create(
+        *builder, loc, gridValues, blockValues, streamAddr, lbs, ubs, steps, n,
         mlir::ValueRange(reduceOperands), builder->getArrayAttr(reduceAttrs));
     builder->createBlock(&op.getRegion(), op.getRegion().end(), ivTypes,
                          ivLocs);
@@ -3447,7 +3454,7 @@ private:
              op.getLoopRegions().front()->front().getArguments(), ivValues)) {
       mlir::Value convArg =
           builder->createConvert(loc, fir::unwrapRefType(value.getType()), arg);
-      builder->create<fir::StoreOp>(loc, convArg, value);
+      fir::StoreOp::create(*builder, loc, convArg, value);
     }
 
     if (crtEval->lowerAsStructured()) {
@@ -3460,7 +3467,7 @@ private:
     for (Fortran::lower::pft::Evaluation &e : crtEval->getNestedEvaluations())
       genFIR(e);
 
-    builder->create<fir::FirEndOp>(loc);
+    fir::FirEndOp::create(*builder, loc);
     builder->setInsertionPointAfter(op);
   }
 
@@ -3601,8 +3608,8 @@ private:
       // The selector is in an ssa register. Any temps that may have been
       // generated while evaluating it can be cleaned up now.
       stmtCtx.finalizeAndReset();
-      builder->create<fir::SelectCaseOp>(loc, selector, attrList, valueList,
-                                         blockList);
+      fir::SelectCaseOp::create(*builder, loc, selector, attrList, valueList,
+                                blockList);
       return;
     }
 
@@ -3825,8 +3832,8 @@ private:
     // the default case (F'2023 11.1.10.2.). The selector cannot be an
     // assumed-size if it is allocatable or pointer, so the check is skipped.
     if (!Fortran::evaluate::IsAllocatableOrPointerObject(*selectorExpr)) {
-      mlir::Value isAssumedSize = builder->create<fir::IsAssumedSizeOp>(
-          loc, builder->getI1Type(), selector);
+      mlir::Value isAssumedSize = fir::IsAssumedSizeOp::create(
+          *builder, loc, builder->getI1Type(), selector);
       // Create new block to hold the fir.select_case for the non assumed-size
       // cases.
       mlir::Block *selectCaseBlock = insertBlock(blockList[0]);
@@ -3838,10 +3845,11 @@ private:
       startBlock(selectCaseBlock);
     }
     // Create fir.select_case for the other rank cases.
-    mlir::Value rank = builder->create<fir::BoxRankOp>(loc, rankType, selector);
+    mlir::Value rank =
+        fir::BoxRankOp::create(*builder, loc, rankType, selector);
     stmtCtx.finalizeAndReset();
-    builder->create<fir::SelectCaseOp>(loc, rank, attrList, valueList,
-                                       blockList);
+    fir::SelectCaseOp::create(*builder, loc, rank, attrList, valueList,
+                              blockList);
   }
 
   // Get associating entity symbol inside case statement scope.
@@ -4050,8 +4058,8 @@ private:
         }
         attrList.push_back(mlir::UnitAttr::get(context));
         blockList.push_back(defaultBlock);
-        builder->create<fir::SelectTypeOp>(loc, fir::getBase(selector),
-                                           attrList, blockList);
+        fir::SelectTypeOp::create(*builder, loc, fir::getBase(selector),
+                                  attrList, blockList);
 
         // If the actual position of CLASS DEFAULT type guard is not the last
         // one, it needs to be put back at its correct position for the rest of
@@ -4126,13 +4134,14 @@ private:
                 fir::ReferenceType::get(addrTy, selectorIsVolatile());
             if (isPointer || isAllocatable)
               refTy = addrTy;
-            exactValue = builder->create<fir::BoxAddrOp>(
-                loc, refTy, fir::getBase(selector));
+            exactValue = fir::BoxAddrOp::create(*builder, loc, refTy,
+                                                fir::getBase(selector));
             const Fortran::semantics::IntrinsicTypeSpec *intrinsic =
                 typeSpec->declTypeSpec->AsIntrinsic();
             if (isArray) {
-              mlir::Value exact = builder->create<fir::ConvertOp>(
-                  loc, fir::BoxType::get(addrTy, selectorIsVolatile()),
+              mlir::Value exact = fir::ConvertOp::create(
+                  *builder, loc,
+                  fir::BoxType::get(addrTy, selectorIsVolatile()),
                   fir::getBase(selector));
               addAssocEntitySymbol(selectorBox->clone(exact));
             } else if (intrinsic->category() ==
@@ -4147,8 +4156,8 @@ private:
             }
           } else if (std::holds_alternative<Fortran::parser::DerivedTypeSpec>(
                          typeSpec->u)) {
-            exactValue = builder->create<fir::ConvertOp>(
-                loc, fir::BoxType::get(addrTy, selectorIsVolatile()),
+            exactValue = fir::ConvertOp::create(
+                *builder, loc, fir::BoxType::get(addrTy, selectorIsVolatile()),
                 fir::getBase(selector));
             addAssocEntitySymbol(selectorBox->clone(exactValue));
           }
@@ -4172,8 +4181,8 @@ private:
           if (classTy == baseTy) {
             addAssocEntitySymbol(selector);
           } else {
-            mlir::Value derived = builder->create<fir::ConvertOp>(
-                loc, classTy, fir::getBase(selector));
+            mlir::Value derived = fir::ConvertOp::create(
+                *builder, loc, classTy, fir::getBase(selector));
             addAssocEntitySymbol(selectorBox->clone(derived));
           }
         }
@@ -4467,21 +4476,21 @@ private:
     mlir::Type indexTy = builder->getIndexType();
     mlir::Type boundArrayTy = fir::SequenceType::get(
         {static_cast<int64_t>(lbounds.size())}, builder->getI64Type());
-    mlir::Value boundArray = builder->create<fir::AllocaOp>(loc, boundArrayTy);
-    mlir::Value array = builder->create<fir::UndefOp>(loc, boundArrayTy);
+    mlir::Value boundArray = fir::AllocaOp::create(*builder, loc, boundArrayTy);
+    mlir::Value array = fir::UndefOp::create(*builder, loc, boundArrayTy);
     for (unsigned i = 0; i < lbounds.size(); ++i) {
-      array = builder->create<fir::InsertValueOp>(
-          loc, boundArrayTy, array, lbounds[i],
+      array = fir::InsertValueOp::create(
+          *builder, loc, boundArrayTy, array, lbounds[i],
           builder->getArrayAttr({builder->getIntegerAttr(
               builder->getIndexType(), static_cast<int>(i))}));
     }
-    builder->create<fir::StoreOp>(loc, array, boundArray);
+    fir::StoreOp::create(*builder, loc, array, boundArray);
     mlir::Type boxTy = fir::BoxType::get(boundArrayTy);
     mlir::Value ext =
         builder->createIntegerConstant(loc, indexTy, lbounds.size());
     llvm::SmallVector<mlir::Value> shapes = {ext};
     mlir::Value shapeOp = builder->genShape(loc, shapes);
-    return builder->create<fir::EmboxOp>(loc, boxTy, boundArray, shapeOp);
+    return fir::EmboxOp::create(*builder, loc, boxTy, boundArray, shapeOp);
   }
 
   // Generate pointer assignment with possibly empty bounds-spec. R1035: a
@@ -4563,14 +4572,14 @@ private:
     // descriptor address/value and later implemented with a store.
     // The RHS is fully prepared in lowering, so that all that is left
     // in hlfir.region_assign code generation is the store.
-    auto regionAssignOp = builder->create<hlfir::RegionAssignOp>(loc);
+    auto regionAssignOp = hlfir::RegionAssignOp::create(*builder, loc);
 
     // Lower LHS in its own region.
     builder->createBlock(&regionAssignOp.getLhsRegion());
     Fortran::lower::StatementContext lhsContext;
     hlfir::Entity lhs = Fortran::lower::convertExprToHLFIR(
         loc, *this, assign.lhs, localSymbols, lhsContext);
-    auto lhsYieldOp = builder->create<hlfir::YieldOp>(loc, lhs);
+    auto lhsYieldOp = hlfir::YieldOp::create(*builder, loc, lhs);
     Fortran::lower::genCleanUpInRegionIfAny(
         loc, *builder, lhsYieldOp.getCleanup(), lhsContext);
 
@@ -4579,7 +4588,7 @@ private:
     Fortran::lower::StatementContext rhsContext;
     mlir::Value rhs =
         genForallPointerAssignmentRhs(loc, lhs, assign, rhsContext);
-    auto rhsYieldOp = builder->create<hlfir::YieldOp>(loc, rhs);
+    auto rhsYieldOp = hlfir::YieldOp::create(*builder, loc, rhs);
     Fortran::lower::genCleanUpInRegionIfAny(
         loc, *builder, rhsYieldOp.getCleanup(), rhsContext);
 
@@ -4617,7 +4626,7 @@ private:
         loc, *this, assign.rhs, localSymbols, rhsContext);
     // Create pointer descriptor value from the RHS.
     if (rhs.isMutableBox())
-      rhs = hlfir::Entity{builder->create<fir::LoadOp>(loc, rhs)};
+      rhs = hlfir::Entity{fir::LoadOp::create(*builder, loc, rhs)};
     mlir::Value rhsBox = hlfir::genVariableBox(
         loc, *builder, rhs, lhsBoxType.getBoxTypeWithNewShape(rhs.getRank()));
     // Apply lower bounds or reshaping if any.
@@ -4629,8 +4638,8 @@ private:
       for (const Fortran::evaluate::ExtentExpr &lbExpr : *lbExprs)
         lbounds.push_back(lowerToIndexValue(loc, lbExpr, rhsContext));
       mlir::Value shift = builder->genShift(loc, lbounds);
-      rhsBox = builder->create<fir::ReboxOp>(loc, lhsBoxType, rhsBox, shift,
-                                             /*slice=*/mlir::Value{});
+      rhsBox = fir::ReboxOp::create(*builder, loc, lhsBoxType, rhsBox, shift,
+                                    /*slice=*/mlir::Value{});
     } else if (const auto *boundExprs =
                    std::get_if<Fortran::evaluate::Assignment::BoundsRemapping>(
                        &assign.u);
@@ -4648,8 +4657,8 @@ private:
             *builder, loc, lbounds.back(), ub, zero, one));
       }
       mlir::Value shape = builder->genShape(loc, lbounds, extents);
-      rhsBox = builder->create<fir::ReboxOp>(loc, lhsBoxType, rhsBox, shape,
-                                             /*slice=*/mlir::Value{});
+      rhsBox = fir::ReboxOp::create(*builder, loc, lhsBoxType, rhsBox, shape,
+                                    /*slice=*/mlir::Value{});
     }
     return rhsBox;
   }
@@ -4663,30 +4672,30 @@ private:
     mlir::Type indexTy = builder->getIndexType();
     mlir::Type boundArrayTy = fir::SequenceType::get(
         {2, static_cast<int64_t>(lbounds.size())}, builder->getI64Type());
-    mlir::Value boundArray = builder->create<fir::AllocaOp>(loc, boundArrayTy);
-    mlir::Value array = builder->create<fir::UndefOp>(loc, boundArrayTy);
+    mlir::Value boundArray = fir::AllocaOp::create(*builder, loc, boundArrayTy);
+    mlir::Value array = fir::UndefOp::create(*builder, loc, boundArrayTy);
     for (unsigned i = 0; i < lbounds.size(); ++i) {
-      array = builder->create<fir::InsertValueOp>(
-          loc, boundArrayTy, array, lbounds[i],
+      array = fir::InsertValueOp::create(
+          *builder, loc, boundArrayTy, array, lbounds[i],
           builder->getArrayAttr(
               {builder->getIntegerAttr(builder->getIndexType(), 0),
                builder->getIntegerAttr(builder->getIndexType(),
                                        static_cast<int>(i))}));
-      array = builder->create<fir::InsertValueOp>(
-          loc, boundArrayTy, array, ubounds[i],
+      array = fir::InsertValueOp::create(
+          *builder, loc, boundArrayTy, array, ubounds[i],
           builder->getArrayAttr(
               {builder->getIntegerAttr(builder->getIndexType(), 1),
                builder->getIntegerAttr(builder->getIndexType(),
                                        static_cast<int>(i))}));
     }
-    builder->create<fir::StoreOp>(loc, array, boundArray);
+    fir::StoreOp::create(*builder, loc, array, boundArray);
     mlir::Type boxTy = fir::BoxType::get(boundArrayTy);
     mlir::Value ext =
         builder->createIntegerConstant(loc, indexTy, lbounds.size());
     mlir::Value c2 = builder->createIntegerConstant(loc, indexTy, 2);
     llvm::SmallVector<mlir::Value> shapes = {c2, ext};
     mlir::Value shapeOp = builder->genShape(loc, shapes);
-    return builder->create<fir::EmboxOp>(loc, boxTy, boundArray, shapeOp);
+    return fir::EmboxOp::create(*builder, loc, boxTy, boundArray, shapeOp);
   }
 
   // Pointer assignment with bounds-remapping. R1036: a bounds-remapping is a
@@ -4760,7 +4769,7 @@ private:
     if (explicitIterationSpace()) {
       mlir::ValueRange inners = explicitIterSpace.getInnerArgs();
       if (!inners.empty())
-        builder->create<fir::ResultOp>(loc, inners);
+        fir::ResultOp::create(*builder, loc, inners);
     }
   }
 
@@ -5261,7 +5270,7 @@ private:
                   mlir::Value pteVal = fir::getBase(pte);
                   mlir::Value cnvrt = Fortran::lower::addCrayPointerInst(
                       loc, *builder, ptrVal, ptrTy, pteVal.getType());
-                  addr = builder->create<fir::LoadOp>(loc, cnvrt);
+                  addr = fir::LoadOp::create(*builder, loc, cnvrt);
                 }
                 mlir::Value cast =
                     isVector ? val
@@ -5271,7 +5280,7 @@ private:
                   addr = builder->createConvert(
                       toLocation(), builder->getRefType(toTy), addr);
                 }
-                builder->create<fir::StoreOp>(loc, cast, addr);
+                fir::StoreOp::create(*builder, loc, cast, addr);
               } else if (isCharacterCategory(lhsType->category())) {
                 // Fortran 2018 10.2.1.3 p10 and p11
                 fir::factory::CharacterExprHelper{*builder, loc}.createAssign(
@@ -5350,7 +5359,7 @@ private:
     if (!lowerToHighLevelFIR()) {
       implicitIterSpace.growStack();
     } else {
-      whereOp = builder->create<hlfir::WhereOp>(loc);
+      whereOp = hlfir::WhereOp::create(*builder, loc);
       builder->createBlock(&whereOp.getMaskRegion());
     }
 
@@ -5385,7 +5394,7 @@ private:
     if (whereOp) {
       // For HLFIR, create fir.end terminator in the last hlfir.elsewhere, or
       // in the hlfir.where if it had no elsewhere.
-      builder->create<fir::FirEndOp>(loc);
+      fir::FirEndOp::create(*builder, loc);
       builder->setInsertionPointAfter(whereOp);
     }
   }
@@ -5412,7 +5421,7 @@ private:
     hlfir::Entity mask = Fortran::lower::convertExprToHLFIR(
         loc, *this, *maskExpr, localSymbols, maskContext);
     mask = hlfir::loadTrivialScalar(loc, *builder, mask);
-    auto yieldOp = builder->create<hlfir::YieldOp>(loc, mask);
+    auto yieldOp = hlfir::YieldOp::create(*builder, loc, mask);
     Fortran::lower::genCleanUpInRegionIfAny(loc, *builder, yieldOp.getCleanup(),
                                             maskContext);
   }
@@ -5428,7 +5437,7 @@ private:
     mlir::Location loc = getCurrentLocation();
     hlfir::ElseWhereOp elsewhereOp;
     if (lowerToHighLevelFIR()) {
-      elsewhereOp = builder->create<hlfir::ElseWhereOp>(loc);
+      elsewhereOp = hlfir::ElseWhereOp::create(*builder, loc);
       // Lower mask in the mask region.
       builder->createBlock(&elsewhereOp.getMaskRegion());
     }
@@ -5456,7 +5465,7 @@ private:
   void genFIR(const Fortran::parser::WhereConstruct::Elsewhere &ew) {
     if (lowerToHighLevelFIR()) {
       auto elsewhereOp =
-          builder->create<hlfir::ElseWhereOp>(getCurrentLocation());
+          hlfir::ElseWhereOp::create(*builder, getCurrentLocation());
       builder->createBlock(&elsewhereOp.getBody());
     }
     genNestedStatement(
@@ -5482,12 +5491,12 @@ private:
         std::get<Fortran::parser::LogicalExpr>(stmt.t));
     if (lowerToHighLevelFIR()) {
       mlir::Location loc = getCurrentLocation();
-      auto whereOp = builder->create<hlfir::WhereOp>(loc);
+      auto whereOp = hlfir::WhereOp::create(*builder, loc);
       builder->createBlock(&whereOp.getMaskRegion());
       lowerWhereMaskToHlfir(loc, mask);
       builder->createBlock(&whereOp.getBody());
       genAssignment(*assign.typedAssignment->v);
-      builder->create<fir::FirEndOp>(loc);
+      fir::FirEndOp::create(*builder, loc);
       builder->setInsertionPointAfter(whereOp);
       return;
     }
@@ -5550,12 +5559,12 @@ private:
     // If the address points to a boxed pointer, we need to dereference it
     if (auto refType = mlir::dyn_cast<fir::ReferenceType>(addr.getType())) {
       if (auto boxType = mlir::dyn_cast<fir::BoxType>(refType.getEleTy())) {
-        mlir::Value boxValue = builder->create<fir::LoadOp>(loc, addr);
-        addr = builder->create<fir::BoxAddrOp>(loc, boxValue);
+        mlir::Value boxValue = fir::LoadOp::create(*builder, loc, addr);
+        addr = fir::BoxAddrOp::create(*builder, loc, boxValue);
       }
     }
 
-    builder->create<fir::StoreOp>(loc, labelValue, addr);
+    fir::StoreOp::create(*builder, loc, labelValue, addr);
   }
 
   void genFIR(const Fortran::parser::FormatStmt &) {
@@ -5606,8 +5615,8 @@ private:
         assert(expr && "missing alternate return expression");
         mlir::Value altReturnIndex = builder->createConvert(
             loc, builder->getIndexType(), createFIRExpr(loc, expr, stmtCtx));
-        builder->create<fir::StoreOp>(loc, altReturnIndex,
-                                      getAltReturnResult(symbol));
+        fir::StoreOp::create(*builder, loc, altReturnIndex,
+                             getAltReturnResult(symbol));
       }
     }
     // Branch to the last block of the SUBROUTINE, which has the actual return.
@@ -5718,7 +5727,7 @@ private:
     // Always generate fir.dummy_scope even if there are no arguments.
     // It is currently used to create proper TBAA forest.
     if (lowerToHighLevelFIR()) {
-      mlir::Value scopeOp = builder->create<fir::DummyScopeOp>(toLocation());
+      mlir::Value scopeOp = fir::DummyScopeOp::create(*builder, toLocation());
       setDummyArgsScope(scopeOp);
     }
     if (std::optional<Fortran::lower::CalleeInterface::PassedEntity>
@@ -5760,10 +5769,10 @@ private:
       mlir::Value ones = builder->createIntegerConstant(
           loc, testExcept.getFunctionType().getInput(0), -1);
       mlir::Value exceptSet =
-          builder->create<fir::CallOp>(loc, testExcept, ones).getResult(0);
-      builder->create<fir::CallOp>(loc, clearExcept, exceptSet);
+          fir::CallOp::create(*builder, loc, testExcept, ones).getResult(0);
+      fir::CallOp::create(*builder, loc, clearExcept, exceptSet);
       bridge.fctCtx().attachCleanup([=]() {
-        builder->create<fir::CallOp>(endLoc, raiseExcept, exceptSet);
+        fir::CallOp::create(*builder, endLoc, raiseExcept, exceptSet);
       });
     }
     if (funit.mayModifyHaltingMode) {
@@ -5776,12 +5785,12 @@ private:
       mlir::func::FuncOp enableExcept =
           fir::factory::getFeenableexcept(*builder);
       mlir::Value exceptSet =
-          builder->create<fir::CallOp>(loc, getExcept).getResult(0);
+          fir::CallOp::create(*builder, loc, getExcept).getResult(0);
       mlir::Value ones = builder->createIntegerConstant(
           loc, disableExcept.getFunctionType().getInput(0), -1);
       bridge.fctCtx().attachCleanup([=]() {
-        builder->create<fir::CallOp>(endLoc, disableExcept, ones);
-        builder->create<fir::CallOp>(endLoc, enableExcept, exceptSet);
+        fir::CallOp::create(*builder, endLoc, disableExcept, ones);
+        fir::CallOp::create(*builder, endLoc, enableExcept, exceptSet);
       });
     }
     if (funit.mayModifyRoundingMode) {
@@ -5793,9 +5802,9 @@ private:
       mlir::func::FuncOp setRounding =
           fir::factory::getLlvmSetRounding(*builder);
       mlir::Value roundingMode =
-          builder->create<fir::CallOp>(loc, getRounding).getResult(0);
+          fir::CallOp::create(*builder, loc, getRounding).getResult(0);
       bridge.fctCtx().attachCleanup([=]() {
-        builder->create<fir::CallOp>(endLoc, setRounding, roundingMode);
+        fir::CallOp::create(*builder, endLoc, setRounding, roundingMode);
       });
     }
     if ((funit.mayModifyUnderflowMode) &&
@@ -5953,8 +5962,8 @@ private:
 
           // convert the storage to the symbol type so that the hlfir.declare
           // gets the correct type for this symbol
-          preAlloc = builder->create<fir::ConvertOp>(getCurrentLocation(),
-                                                     wrappedSymTy, preAlloc);
+          preAlloc = fir::ConvertOp::create(*builder, getCurrentLocation(),
+                                            wrappedSymTy, preAlloc);
         }
 
         Fortran::lower::mapSymbolAttributes(*this, altResult, localSymbols,
@@ -5990,7 +5999,7 @@ private:
           builder->createTemporary(loc, idxTy, toStringRef(symbol.name()));
       addSymbol(symbol, altResult);
       mlir::Value zero = builder->createIntegerConstant(loc, idxTy, 0);
-      builder->create<fir::StoreOp>(loc, zero, altResult);
+      fir::StoreOp::create(*builder, loc, zero, altResult);
     }
 
     if (Fortran::lower::pft::Evaluation *alternateEntryEval =
@@ -6464,23 +6473,23 @@ private:
     // FIXME: Is there a way to create a `zeroinitializer` in LLVM-IR dialect?
     // For now, explicitly set lazy ragged header to all zeros.
     // auto nilTup = builder->createNullConstant(loc, ty);
-    // builder->create<fir::StoreOp>(loc, nilTup, hdr);
+    // fir::StoreOp::create(*builder, loc, nilTup, hdr);
     mlir::Type i32Ty = builder->getIntegerType(32);
     mlir::Value zero = builder->createIntegerConstant(loc, i32Ty, 0);
     mlir::Value zero64 = builder->createIntegerConstant(loc, i64Ty, 0);
-    mlir::Value flags = builder->create<fir::CoordinateOp>(
-        loc, builder->getRefType(i64Ty), hdr, zero);
-    builder->create<fir::StoreOp>(loc, zero64, flags);
+    mlir::Value flags = fir::CoordinateOp::create(
+        *builder, loc, builder->getRefType(i64Ty), hdr, zero);
+    fir::StoreOp::create(*builder, loc, zero64, flags);
     mlir::Value one = builder->createIntegerConstant(loc, i32Ty, 1);
     mlir::Value nullPtr1 = builder->createNullConstant(loc, buffTy);
-    mlir::Value var = builder->create<fir::CoordinateOp>(
-        loc, builder->getRefType(buffTy), hdr, one);
-    builder->create<fir::StoreOp>(loc, nullPtr1, var);
+    mlir::Value var = fir::CoordinateOp::create(
+        *builder, loc, builder->getRefType(buffTy), hdr, one);
+    fir::StoreOp::create(*builder, loc, nullPtr1, var);
     mlir::Value two = builder->createIntegerConstant(loc, i32Ty, 2);
     mlir::Value nullPtr2 = builder->createNullConstant(loc, shTy);
-    mlir::Value shape = builder->create<fir::CoordinateOp>(
-        loc, builder->getRefType(shTy), hdr, two);
-    builder->create<fir::StoreOp>(loc, nullPtr2, shape);
+    mlir::Value shape = fir::CoordinateOp::create(
+        *builder, loc, builder->getRefType(shTy), hdr, two);
+    fir::StoreOp::create(*builder, loc, nullPtr2, shape);
     implicitIterSpace.addMaskVariable(exp, var, shape, hdr);
     explicitIterSpace.outermostContext().attachCleanup(
         [builder = this->builder, hdr, loc]() {
